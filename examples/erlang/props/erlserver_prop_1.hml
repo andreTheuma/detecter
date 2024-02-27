@@ -1,0 +1,13 @@
+with
+    erlserver:state_s0()
+monitor
+    and([_ <- _, erlserver:state_s0()]
+        max(X.
+            and([_ ? {init, _}]
+                and(
+                    [_:_ ! {Res, _} when Res =/= ok]ff,
+                    [_:_ ! {Res, _} when Res =:= ok]X
+                )
+            )
+        )
+    ).
