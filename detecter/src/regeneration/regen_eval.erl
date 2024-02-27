@@ -66,25 +66,25 @@ get_next_events(CurrentEvent, [{Event, _, NextEvents} | Rest]) ->
     EventTable :: event_table_parser:event_table().
 generate_missing_event(NextEvent,PreviousEvent, EventTable)->
 
-    PreviousEvents = get_previous_events(NextEvent, EventTable),
-    NextEvents = get_next_events(PreviousEvent, EventTable),
+    PossibleCurrentEventList1 = get_previous_events(NextEvent, EventTable),
+    PossibleCurrentEventList2 = get_next_events(PreviousEvent, EventTable),
 
-    case {PreviousEvent, NextEvent} of
-        {_,_} when length(PreviousEvents) > 0, length(NextEvents) > 0 ->
-            Intersection = ordsets:intersection(ordsets:from_list(PreviousEvents), ordsets:from_list(NextEvents)),
-            case length(Intersection) of
-                1->
-                    {ok,hd(Intersection)};
-                0 ->
-                    undefined;
-                _ -> 
-                    {error,"Error: More than one event in common between previous and next events."}
-            end;
+    case {PreviousEvent, NextEvent} of {_,_} ->
+
+        Intersection = ordsets:intersection(ordsets:from_list(PossibleCurrentEventList1), ordsets:from_list(PossibleCurrentEventList2)),
+        case length(Intersection) of
+            1->
+                {ok,hd(Intersection)};
+            0 ->
+                undefined;
+            _ -> 
+                {error,"Error: More than one event in common between previous and next events."}
+        end;
+
         _ ->
-            undefined
+            {error, "Something went wrong."}
+
     end.
-
-
 %% TESTS
 
 test(PreviousEvent, NextEvent, FileName) ->
@@ -104,5 +104,3 @@ test(PreviousEvent, NextEvent, FileName) ->
         {error, Error} -> 
             io:format("Error: ~p~n", [Error])
     end.
-
-
