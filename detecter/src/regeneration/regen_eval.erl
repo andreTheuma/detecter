@@ -1,34 +1,11 @@
 -module(regen_eval).
 -author("André Theuma").
 
--compile([debug_info]).
-
--export([event_exists/1]).
+% -export([event_exists/1]).
 -export([get_previous_events/2, get_next_events/2]).
 -export([generate_missing_event/3]).
 
 -export([test/3]).
-
-%% @doc Reads an event from the trace and checks if it exists ie: when mfa is not 'undefined'. if it is undefined,
-%% return false, else return true.
--spec event_exists(Event) -> boolean() 
-    when 
-    Event :: event:evm_event().
-event_exists(Event) ->
-    case Event of
-        {trace,_,spawn,_,Mfa} when Mfa =:= undefined -> 
-            true;
-        {trace,_,spawned,_,Mfa} when Mfa =:= undefined ->
-            true;
-        {trace,_,exit,_}-> 
-            true;
-        {trace,_,send,_,_} ->
-            true;
-        {trace,_,'receive',_} ->
-            true;
-        _ ->
-            false
-    end.
 
 %% @doc Returns the previous events of the current event by checking the event table and returning the previous events 
 -spec get_previous_events(CurrentEvent, EventTable) -> [event:event_atom()]
@@ -59,11 +36,12 @@ get_next_events(CurrentEvent, [{Event, _, NextEvents} | Rest]) ->
             get_next_events(CurrentEvent, Rest)
     end.
 
--spec generate_missing_event(NextEvent,PreviousEvent, EventTable) -> [event:event_atom()]
+-spec generate_missing_event(NextEvent,PreviousEvent, EventTable) -> MissingEvent | undefined | {error, string()}
     when
     NextEvent :: event_table_parser:event_atom(),
     PreviousEvent :: event_table_parser:event_atom(),
-    EventTable :: event_table_parser:event_table().
+    EventTable :: event_table_parser:event_table(),
+    MissingEvent :: event_table_parser:event_atom().
 generate_missing_event(NextEvent,PreviousEvent, EventTable)->
 
     PossibleCurrentEventList1 = get_previous_events(NextEvent, EventTable),
@@ -85,6 +63,10 @@ generate_missing_event(NextEvent,PreviousEvent, EventTable)->
             {error, "Something went wrong."}
 
     end.
+
+
+
+
 %% TESTS
 
 test(PreviousEvent, NextEvent, FileName) ->

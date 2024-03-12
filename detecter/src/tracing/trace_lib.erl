@@ -114,8 +114,15 @@
 -spec start(Method :: trace_method()) -> ok | {ok, pid()}.
 start(evm) ->
   try_start(evm_tracer, start, []);
-start({log, File}) ->
-  try_start(log_tracer, start, [File]).
+start({Flag, File}) ->
+  case Flag of
+    log ->
+      try_start(log_tracer, start, [File]);
+    lin ->
+      try_start(lin_tracer, start, [File]);
+    _ ->
+      throw({error, invalid_trace_method})
+  end.
 
 %% @doc Shuts down the tracer.
 %%

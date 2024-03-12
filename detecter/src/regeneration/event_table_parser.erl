@@ -1,8 +1,6 @@
 -module(event_table_parser).
 -author("André Theuma").
 
--compile([debug_info]).
-
 -export([parse_table/1]).
 -export([string_tokenizer/1]).
 -export([file_format_checker/1]).
@@ -11,12 +9,14 @@
 
 -import(event, [evm_event/0]).
 
--type event_table() :: [event_relation()].
+-type event_table() :: list(event_relation()).
 -type event_relation() :: {event_atom(), event_atom(), event_atom()}.
 -type event_atom() :: atom().
 
 %% @doc The entry function to parse the event table.
--spec parse_table(Filename) -> event_table() when Filename :: string().
+-spec parse_table(Filename) -> {ok, EventTable} when
+    Filename :: string(),
+    EventTable :: event_table().
 parse_table(Filename) ->
     case file:open(Filename, [read]) of
         {ok, _} ->
@@ -54,26 +54,32 @@ string_tokenizer(Line) ->
 
     {CurrentEvent, PreviousEvents, NextEvents}.
 
-
 -spec file_format_checker(Lines) -> [ok | {error, string()}] when Lines :: [string()].
-file_format_checker(Lines)->
+file_format_checker(Lines) ->
     RegEx = "^[A-Za-z0-9]+ \\| \\{[^}]*\\}; \\{[^}]*\\}$",
-    case lists:all(fun(Line) ->
-        % if line starts with a comment, ignore it
-        case re:run(Line, "^\\s*%") of
-            nomatch -> ok;
-            _ -> return
-        end,
+    case
+        lists:all(
+            fun(Line) ->
+                % if line starts with a comment, ignore it
+                case re:run(Line, "^\\s*%") of
+                    nomatch -> ok;
+                    _ -> return
+                end,
 
-        case re:run(Line, RegEx) of
-            nomatch ->
-                io:format("Line ~p does not match the format.~n", [Line]),
-                false;
-            {match, _} -> 
-                true
-        end
-    end, Lines) of
-        true -> ok;
-        false -> {error, "Invalid format. The format should be <current_event> | {<previous_events>}; {<next_events>"}
+                case re:run(Line, RegEx) of
+                    nomatch ->
+                        io:format("Line ~p does not match the format.~n", [Line]),
+                        false;
+                    {match, _} ->
+                        true
+                end
+            end,
+            Lines
+        )
+    of
+        true ->
+            ok;
+        false ->
+            {error,
+                "Invalid format. The format should be <current_event> | {<previous_events>}; {<next_events>"}
     end.
-    

@@ -28,7 +28,7 @@
 -include("log.hrl").
 
 %%% Public API.
--export([start_online/3, start_offline/4, stop/0]).
+-export([start_online/3, start_outline/4, start_offline/4, stop/0]).
 %%-export([start_off/4]).
 
 %%% Types.
@@ -108,6 +108,26 @@ start_online({Mod, Fun, Args}, MfaSpec, Opts) when is_function(MfaSpec, 1) ->
 
   % Obtain return result of applied function.
   {ok, Root, receive {_, _, {return, Return}} -> Return end}.
+
+-spec start_outline(File, PidS, MfaSpec, Opts) -> pid()
+  when
+  File :: file:filename(),
+  PidS :: pid(),
+  MfaSpec :: analyzer:mfa_spec(),
+  Opts :: option().
+start_outline(File, PidS, MfaSpec, Opts) when is_function(MfaSpec, 1) ->
+
+  % Start tracing framework.
+  trace_lib:start({lin, File}),
+
+  % Start root tracer with specified options. In offline monitoring, the trace
+  % is already assumed to exist. As is done for the online case, the root tracer
+  % is bootstrapped with the PID of the top-level system process.
+  Root = tracer:start(PidS, MfaSpec, analysis_opt(Opts), parent_opt(Opts)),
+
+  % Ack root monitor.
+  util:syn_ack(Root),
+  Root.
 
 %% @doc Loads the offline trace from the specified file and replay it with offline
 %% monitors.
