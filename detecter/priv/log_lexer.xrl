@@ -64,7 +64,7 @@ recv                      : {token, {recv, TokenLine}}.
 {WS}+   					        : skip_token.
 
 % Corrupt event token.
-C                    : {token, {corrupt_payload, TokenLine}}.
+X                    : {token, {corrupt_payload, TokenLine}}.
 
 % Corrupt payload token.
 % "{CORRUPT_PAYLOAD}"       : {token, {corrupt_payload, TokenLine, TokenChars}}.

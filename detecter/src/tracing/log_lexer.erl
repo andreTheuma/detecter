@@ -443,7 +443,7 @@ yystate(57, [93|Ics], Line, Col, Tlen, Action, Alen) ->
     yystate(8, Ics, Line, Col, Tlen+1, Action, Alen);
 yystate(57, [91|Ics], Line, Col, Tlen, Action, Alen) ->
     yystate(8, Ics, Line, Col, Tlen+1, Action, Alen);
-yystate(57, [67|Ics], Line, Col, Tlen, Action, Alen) ->
+yystate(57, [88|Ics], Line, Col, Tlen, Action, Alen) ->
     yystate(56, Ics, Line, Col, Tlen+1, Action, Alen);
 yystate(57, [60|Ics], Line, Col, Tlen, Action, Alen) ->
     yystate(52, Ics, Line, Col, Tlen+1, Action, Alen);
