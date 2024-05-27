@@ -1,5 +1,0 @@
-START | {}; {init}
-init | {START}; {run}
-run | {init,idle}; {read,idle}
-read | {run,read}; {read,idle}
-idle | {run,read}; {run}

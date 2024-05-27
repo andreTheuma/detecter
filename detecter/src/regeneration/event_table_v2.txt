@@ -1,5 +1,0 @@
-switch1 | {switch1,beep}; {switch1,run,beep}
-run | {switch1,beep,idle}; {read,idle}
-read | {run,read}; {read,idle}
-idle | {run,read}; {switch1,run,beep}
-beep | {switch1,idle,beep}; {switch1,beep,run}

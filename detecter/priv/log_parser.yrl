@@ -24,7 +24,13 @@ pid ref atom int float string
 delayed by
 
 % Event declaration symbols.
-fork init exit send recv.
+fork init exit send recv
+
+% Corrupt event symbol.
+corrupt_event
+
+% Corrupt payload symbol.
+corrupt_payload.
 
 Rootsymbol delay.
 
@@ -37,6 +43,10 @@ event -> exit '(' pid ',' item ')'              : {exit, '$3', '$5'}.
 event -> send '(' pid ',' pid ',' item ')'      : {send, '$3', '$5', '$7'}.
 event -> recv '(' pid ',' item ')'              : {recv, '$3', '$5'}.
 
+% Corrupt events - > returns the corrupt event and the pid of the event that was corrupted.
+event -> corrupt_payload '(' pid ',' pid ',' mfa ')' : {corrupt_payload, '$3', '$5', '$7'}.
+event -> corrupt_payload '(' pid ',' item ')'         : {corrupt_payload, '$3', '$5'}.
+event -> corrupt_payload '(' pid ',' pid ',' item ')' : {corrupt_payload, '$3', '$5', '$7'}.
 
 mfa -> '{' atom ',' atom ',' list '}'           : {mfa, '$2', '$4', '$6'}.
 

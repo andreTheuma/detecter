@@ -22,7 +22,6 @@ STRING                    = [!-~\s\t\n\r]
 % Whitespace characters.
 WS                        = ([\s\t]|%.*)
 
-
 %%% ----------------------------------------------------------------------------
 %%% Lexical token rule definitions.
 %%% ----------------------------------------------------------------------------
@@ -63,6 +62,13 @@ recv                      : {token, {recv, TokenLine}}.
 
 % Whitespace and comment tokens.
 {WS}+   					        : skip_token.
+
+% Corrupt event token.
+C                    : {token, {corrupt_payload, TokenLine}}.
+
+% Corrupt payload token.
+% "{CORRUPT_PAYLOAD}"       : {token, {corrupt_payload, TokenLine, TokenChars}}.
+% _X_\(<([A-Za-z0-9]+(\.[A-Za-z0-9]+)+)>,\{[^}]*\}\}\) : {token, {corrupt_payload, TokenLine, TokenChars}}.
 
 %%% ----------------------------------------------------------------------------
 %%% Erlang supporting macros.

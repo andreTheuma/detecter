@@ -1,88 +1,81 @@
 -module(regen_eval).
 -author("André Theuma").
 
-% -export([event_exists/1]).
--export([get_previous_events/2, get_next_events/2]).
+% -ifdef(TEST).
+-export([get_previous_events/2, generate_current_event_list/3]).
+% -endif.
+
+-include("log.hrl").
+-include("event.hrl").
+
 -export([generate_missing_event/3]).
 
--export([test/3]).
-
-%% @doc Returns the previous events of the current event by checking the event table and returning the previous events 
--spec get_previous_events(CurrentEvent, EventTable) -> [event:event_atom()]
-    when
-    CurrentEvent :: event_table_parser:event_atom(),
+%% @doc Returns the previous possible actions of a given event and a system information table.
+-spec get_previous_events(CurrentEvent, EventTable) -> [event:int_event_atom()] when
+    CurrentEvent :: event:evm_event(),
     EventTable :: event_table_parser:event_table().
 get_previous_events(_, []) ->
     [];
 get_previous_events(CurrentEvent, [{Event, PreviousEvents, _} | Rest]) ->
-    case CurrentEvent =:= Event of
+    CurrentEventAction = atom_to_list(element(3, CurrentEvent)),
+    case CurrentEventAction =:= Event of
         true ->
-            PreviousEvents;
+            lists:map(fun(X) -> list_to_existing_atom(X) end, PreviousEvents);
         false ->
             get_previous_events(CurrentEvent, Rest)
     end.
 
--spec get_next_events(CurrentEvent, EventTable) -> [event:event_atom()]
-    when
-    CurrentEvent :: event_table_parser:event_atom(),
+%% @doc Returns the next events of a given event and a system information table.
+-spec get_next_events(CurrentEvent, EventTable) -> [event:int_event_atom()] when
+    CurrentEvent :: event:evm_event(),
     EventTable :: event_table_parser:event_table().
 get_next_events(_, []) ->
     [];
 get_next_events(CurrentEvent, [{Event, _, NextEvents} | Rest]) ->
-    case CurrentEvent =:= Event of
+    CurrentEventAction = atom_to_list(element(3, CurrentEvent)),
+    case CurrentEventAction =:= Event of
         true ->
-            NextEvents;
+            lists:map(fun(X) -> list_to_existing_atom(X) end, NextEvents);
         false ->
             get_next_events(CurrentEvent, Rest)
     end.
 
--spec generate_missing_event(NextEvent,PreviousEvent, EventTable) -> MissingEvent | undefined | {error, string()}
-    when
-    NextEvent :: event_table_parser:event_atom(),
-    PreviousEvent :: event_table_parser:event_atom(),
+-spec generate_current_event_list(PreviousEvent, MissingEventPayload, EventTable) -> EventList when
+    PreviousEvent :: event:evm_event(),
+    MissingEventPayload :: event:corrupt_event(),
     EventTable :: event_table_parser:event_table(),
-    MissingEvent :: event_table_parser:event_atom().
-generate_missing_event(NextEvent,PreviousEvent, EventTable)->
-
-    PossibleCurrentEventList1 = get_previous_events(NextEvent, EventTable),
-    PossibleCurrentEventList2 = get_next_events(PreviousEvent, EventTable),
-
-    case {PreviousEvent, NextEvent} of {_,_} ->
-
-        Intersection = ordsets:intersection(ordsets:from_list(PossibleCurrentEventList1), ordsets:from_list(PossibleCurrentEventList2)),
-        case length(Intersection) of
-            1->
-                {ok,hd(Intersection)};
-            0 ->
-                undefined;
-            _ -> 
-                {error,"Error: More than one event in common between previous and next events."}
-        end;
-
-        _ ->
-            {error, "Something went wrong."}
-
+    EventList :: [event:int_event()].
+generate_current_event_list(PreviousEvent, MissingEventPayload, EventTable) ->
+    PossibleActions = get_next_events(PreviousEvent, EventTable),
+    case MissingEventPayload of
+        {corrupt_payload, Pid, Item} ->
+            lists:map(fun(Action) -> {Action, Pid, Item} end, PossibleActions)
     end.
 
+-spec generate_missing_event(PreviousEventList, CurrentEvent, EventTable) ->
+    {ok, Event} | {error, string()}
+when
+    PreviousEventList :: [event:int_event()],
+    CurrentEvent :: event:evm_event(),
+    Event :: event:evm_event(),
+    EventTable :: event_table_parser:event_table().
+generate_missing_event(PreviousEventList, CurrentEvent, EventTable) ->
+    PreviousEventActionsFromCurrentEvent = get_previous_events(CurrentEvent, EventTable),
 
-
-
-%% TESTS
-
-test(PreviousEvent, NextEvent, FileName) ->
-    case event_table_parser:parse_table(FileName) of
-        {ok, Table} -> 
-            io:format("Table is ~p~n", [Table]),
-            % PreviousEvents = get_previous_events(CurrentEvent, Table),
-            % io:format("Previous events of ~p are ~p~n", [CurrentEvent, PreviousEvents]);
-            case generate_missing_event(NextEvent,PreviousEvent, Table) of
-                undefined ->
-                    io:format("No missing event found.~n");
-                {ok, MissingEvent} ->
-                    io:format("Missing event is ~p~n", [MissingEvent]);
-                {error, Error} ->
-                    io:format("Error: ~p~n", [Error])
-            end;
-        {error, Error} -> 
-            io:format("Error: ~p~n", [Error])
+    case PreviousEventActionsFromCurrentEvent of
+        ?EMPTY_EVENT ->
+            {error, "Error: No previous events found."};
+        _ ->
+            GeneratedEventActionList = ordsets:intersection(
+                ordsets:from_list(PreviousEventActionsFromCurrentEvent),
+                ordsets:from_list(lists:map(fun(X) -> element(1, X) end, PreviousEventList))
+            ),
+            case length(GeneratedEventActionList) of
+                1 -> 
+                    event:to_evm_event(hd([GeneratedEvent || GeneratedEvent <- PreviousEventList, element(1, GeneratedEvent) =:= hd(GeneratedEventActionList)]));
+                0 ->
+                    {error, "Error: No common event found."};
+                _ ->
+                    {error, "Error: More than one common event found."}
+            end
     end.

@@ -1,13 +1,33 @@
+%%% ----------------------------------------------------------------------------
+%%% @author Duncan Paul Attard extended by André Theuma
+%%%
+%%% @doc Active file polling and parsing of trace event logs.
+%%% @end
+%%% 
+%%% Copyright (c) 2021, Duncan Paul Attard <duncanatt@gmail.com>
+%%%
+%%% This program is free software: you can redistribute it and/or modify it 
+%%% under the terms of the GNU General Public License as published by the Free 
+%%% Software Foundation, either version 3 of the License, or (at your option) 
+%%% any later version.
+%%%
+%%% This program is distributed in the hope that it will be useful, but WITHOUT 
+%%% ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+%%% FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+%%% more details.
+%%%
+%%% You should have received a copy of the GNU General Public License along with 
+%%% this program. If not, see <https://www.gnu.org/licenses/>.
+%%% ----------------------------------------------------------------------------
 -module(lin_poller).
-
--author("Duncan Paul Attard").
-
-%%% Public API.
--export([start/2, start_link/2, stop/0]).
+-author("Andre Theuma").
 
 %%% Includes.
 -include_lib("stdlib/include/assert.hrl").
 -include("log.hrl").
+
+%%% Public API.
+-export([start/2, start_link/2, stop/0]).
 
 %%% Callbacks.
 -export([init/1, handle_line/3]).
@@ -120,14 +140,13 @@ handle_line(Line, LineInfo, State = {events_read, Cnt}) ->
   LineNum = gen_file_poller:line_info_line_num(LineInfo),
   case log_eval:eval_string(Line, LineNum) of
     {ok, skip} ->
-
       % Event skipped because the evaluated string was a chunk of whitespace or
       % was commented out.
       {ok, State};
     {ok, Event} ->
-
       % A valid event has been evaluated successfully. Post it to log tracer.
       lin_tracer:post_event(Event),
       ?TRACE("~4..0B Event ~w.", [LineNum, Event]),
       {ok, {events_read, Cnt + 1}}
+      % end
   end.

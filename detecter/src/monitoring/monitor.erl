@@ -26,6 +26,7 @@
 %%% Includes.
 -include_lib("stdlib/include/assert.hrl").
 -include("log.hrl").
+-include("event.hrl").
 
 %%% Public API.
 -export([start_online/3, start_outline/4, start_offline/4, stop/0]).
@@ -33,7 +34,6 @@
 
 %%% Types.
 -export_type([option/0, options/0]).
-
 
 %%% ----------------------------------------------------------------------------
 %%% Macro and record definitions.
@@ -43,10 +43,11 @@
 -define(OPT_PARENT, parent).
 -define(OPT_ANALYSIS, analysis).
 
-
 %%% ----------------------------------------------------------------------------
 %%% Type definitions.
 %%% ----------------------------------------------------------------------------
+
+%% Current monitor state type.
 
 -type option() :: {?OPT_PARENT, tracer:parent()} | {?OPT_ANALYSIS, tracer:a_mode()}.
 %% Monitor options.
@@ -119,6 +120,8 @@ start_outline(File, PidS, MfaSpec, Opts) when is_function(MfaSpec, 1) ->
 
   % Start tracing framework.
   trace_lib:start({lin, File}),
+
+  analyzer:init_event_buffer(),
 
   % Start root tracer with specified options. In offline monitoring, the trace
   % is already assumed to exist. As is done for the online case, the root tracer

@@ -634,7 +634,8 @@ parse_lines(Name, State, Mod, IoDev, Buf, ByteOff, LineNum) ->
       % the last processed byte offset, shifted by the number of bytes read.
       NextByteOffset = ByteOff + ByteCnt,
 
-      ?TRACE("Buffer left ~p, fault (at byte ~p).", [BufLeft, NextByteOffset]),
+%! TODO: UNCOMMENT
+      % ?TRACE("Buffer left ~p, fault (at byte ~p).", [BufLeft, NextByteOffset]),
 
       case file:pread(IoDev, NextByteOffset, ?BUF_LEN) of
         % TODO: Use this to test!!!
@@ -644,9 +645,9 @@ parse_lines(Name, State, Mod, IoDev, Buf, ByteOff, LineNum) ->
           % The unprocessed bytes from the previous buffer are prepended to the
           % newly-read buffer from file.
           NewBuf = BufLeft ++ NextBuf,
-
-          ?TRACE("Next buffer ~p (from byte ~p to ~p).",
-            [NextBuf, NextByteOffset, NextByteOffset + ?BUF_LEN]),
+%! TODO: UNCOMMENT
+          % ?TRACE("Next buffer ~p (from byte ~p to ~p).",
+            % [NextBuf, NextByteOffset, NextByteOffset + ?BUF_LEN]),
 
           % Parse next line from the bytes remaining in buffer from the last
           % incomplete parse AND the newly-read buffer. As the parse is

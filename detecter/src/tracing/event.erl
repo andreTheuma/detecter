@@ -23,16 +23,23 @@
 -module(event).
 -author("Duncan Paul Attard").
 
+-include("../include/event.hrl").
+
 %%% Public API.
 -export([to_evm_event/1]).
 
 %%% Types.
--export_type([int_event/0, evm_event/0]).
+-export_type([int_event/0, evm_event/0,evm_event_atom/0]).
 
 
 %%% ----------------------------------------------------------------------------
 %%% Type definitions.
 %%% ----------------------------------------------------------------------------
+-type int_event_atom() ::
+  fork | init | exit | send | recv.
+
+-type evm_event_atom() ::
+  spawn | spawned | exit | send | 'receive'.
 
 -type int_event() ::
 {fork, Parent :: pid(), Child :: pid(), Mfa :: mfa()} |
@@ -51,6 +58,9 @@
 {trace, PidSrc :: pid(), 'receive', Msg :: term()}.
 %% Trace event format issued by the Erlang Virtual Machine tracing
 %% infrastructure. See {@link erlang:trace/3} for more information.
+
+-type corrupt_event() ::
+{corrupt_payload, PidSrc :: pid(), Msg :: term()}.
 
 
 %%% ----------------------------------------------------------------------------

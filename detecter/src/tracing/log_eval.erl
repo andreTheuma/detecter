@@ -43,17 +43,17 @@
 %%%
 %%% Copyright (c) 2021, Duncan Paul Attard <duncanatt@gmail.com>
 %%%
-%%% This program is free software: you can redistribute it and/or modify it 
-%%% under the terms of the GNU General Public License as published by the Free 
-%%% Software Foundation, either version 3 of the License, or (at your option) 
+%%% This program is free software: you can redistribute it and/or modify it
+%%% under the terms of the GNU General Public License as published by the Free
+%%% Software Foundation, either version 3 of the License, or (at your option)
 %%% any later version.
 %%%
-%%% This program is distributed in the hope that it will be useful, but WITHOUT 
-%%% ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+%%% This program is distributed in the hope that it will be useful, but WITHOUT
+%%% ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
 %%% FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
 %%% more details.
 %%%
-%%% You should have received a copy of the GNU General Public License along with 
+%%% You should have received a copy of the GNU General Public License along with
 %%% this program. If not, see <https://www.gnu.org/licenses/>.
 %%% ----------------------------------------------------------------------------
 -module(log_eval).
@@ -65,7 +65,6 @@
 
 %%% Public API.
 -export([eval_string/2]).
-
 
 %%% ----------------------------------------------------------------------------
 %%% Type definitions.
@@ -95,8 +94,14 @@
 -type ev_tuple() :: {tuple, [ev_term()]}.
 %% Tuple AST node.
 
--type ev_term() :: ev_atom() | ev_int() | ev_float() | ev_pid() |
-ev_string() | ev_list() | ev_tuple().
+-type ev_term() ::
+    ev_atom()
+    | ev_int()
+    | ev_float()
+    | ev_pid()
+    | ev_string()
+    | ev_list()
+    | ev_tuple().
 %% Term AST node.
 
 -type ev_mfa() :: {mfa, ev_atom(), ev_atom(), ev_list()}.
@@ -122,7 +127,6 @@ ev_string() | ev_list() | ev_tuple().
 
 -type ev_delay() :: {delay, Ms :: ev_int(), Event :: ev_event()}.
 
-
 %%% ----------------------------------------------------------------------------
 %%% Public API.
 %%% ----------------------------------------------------------------------------
@@ -141,10 +145,10 @@ ev_string() | ev_list() | ev_tuple().
 %%
 %% {@returns Intermediate trace event representation in Erlang format.}
 -spec eval_string(String, LineNum) ->
-  {ok, skip} | {ok, log_tracer:event()} | no_return()
-  when
-  String :: string(),
-  LineNum :: line_num().
+    {ok, skip} | {ok, log_tracer:event()} | no_return()
+when
+    String :: string(),
+    LineNum :: line_num().
 eval_string(String, LineNum) when is_list(String) ->
   case log_lexer:string(String) of
     {ok, [], _} ->
@@ -152,14 +156,13 @@ eval_string(String, LineNum) when is_list(String) ->
     {ok, Tokens, _} ->
       case log_parser:parse(Tokens) of
         {ok, Ast} ->
-          {ok, eval_delay(Ast)};
+            {ok, eval_delay(Ast)};
         {error, {_, _, ErrorDesc}} ->
           error({error, LineNum, log_parser:format_error(ErrorDesc)})
       end;
     {error, {_, _, ErrorDesc}, _} ->
       error({error, LineNum, log_lexer:format_error(ErrorDesc)})
   end.
-
 
 %%% ----------------------------------------------------------------------------
 %%% Private helper functions.
@@ -175,9 +178,9 @@ eval_string(String, LineNum) when is_list(String) ->
 %% {@returns Intermediate trace event representation in Erlang format.}
 -spec eval_delay(Delay :: ev_delay() | ev_event()) -> log_tracer:event().
 eval_delay({delay, {int, _, Ms}, Event}) ->
-  {delay, Ms, eval_event(Event)};
+    {delay, Ms, eval_event(Event)};
 eval_delay(Event) ->
-  {delay, 0, eval_event(Event)}.
+    {delay, 0, eval_event(Event)}.
 
 %% @private Evaluates the trace event AST node.
 %%
@@ -190,15 +193,18 @@ eval_delay(Event) ->
 %% {@returns Intermediate trace event representation in Erlang format.}
 -spec eval_event(Event :: ev_event()) -> event:int_event().
 eval_event({fork, {pid, _, Pid}, {pid, _, Pid2}, Mfa}) ->
-  {fork, Pid, Pid2, eval_mfa(Mfa)};
+    {fork, Pid, Pid2, eval_mfa(Mfa)};
 eval_event({init, {pid, _, Pid}, {pid, _, Pid2}, Mfa}) ->
-  {init, Pid, Pid2, eval_mfa(Mfa)};
+    {init, Pid, Pid2, eval_mfa(Mfa)};
 eval_event({exit, {pid, _, Pid}, {atom, _, Reason}}) ->
-  {exit, Pid, Reason};
+    {exit, Pid, Reason};
 eval_event({send, {pid, _, Pid}, {pid, _, Pid2}, Item}) ->
-  {send, Pid, Pid2, eval_term(Item)};
+    {send, Pid, Pid2, eval_term(Item)};
 eval_event({recv, {pid, _, Pid}, Item}) ->
-  {recv, Pid, eval_term(Item)}.
+    {recv, Pid, eval_term(Item)};
+
+eval_event({corrupt_payload, {pid, _, Pid}, Item}) ->
+    {corrupt_payload, Pid, eval_term(Item)}.
 
 %% @private Evaluates the MFA AST node.
 %%
@@ -210,8 +216,7 @@ eval_event({recv, {pid, _, Pid}, Item}) ->
 %% {@returns Intermediate MFA representation in Erlang format.}
 -spec eval_mfa(Mfa :: ev_mfa()) -> mfa().
 eval_mfa({mfa, {atom, _, M}, {atom, _, F}, Args}) ->
-  {M, F, eval_term(Args)}.
-
+    {M, F, eval_term(Args)}.
 
 %% @private Evaluates the term AST node.
 %%
@@ -222,27 +227,27 @@ eval_mfa({mfa, {atom, _, M}, {atom, _, F}, Args}) ->
 %%
 %% {@returns Simple or complex Erlang data type.}
 -spec eval_term(Term :: ev_term()) ->
-  pid() | atom() | integer() | float() | list() | tuple().
+    pid() | atom() | integer() | float() | list() | tuple().
 eval_term({pid, _, Pid}) ->
-  Pid;
+    Pid;
 eval_term({ref, _, Pid}) ->
-  Pid;
+    Pid;
 eval_term({atom, _, Atom}) ->
-  Atom;
+    Atom;
 eval_term({int, _, Int}) ->
-  Int;
+    Int;
 eval_term({float, _, Float}) ->
-  Float;
+    Float;
 eval_term({string, _, String}) ->
-  String;
+    String;
 eval_term(nil) ->
-  [];
+    [];
 eval_term({cons, Head, Tail}) ->
-  [eval_term(Head) | eval_term(Tail)];
+    [eval_term(Head) | eval_term(Tail)];
 eval_term({tuple, []}) ->
-  {};
+    {};
 eval_term({tuple, Terms}) ->
-  list_to_tuple(conv_list(Terms)).
+    list_to_tuple(conv_list(Terms)).
 
 %% @private Evaluates a list of term AST nodes.
 %%
@@ -254,6 +259,6 @@ eval_term({tuple, Terms}) ->
 %% {@returns List of simple or complex Erlang data types.}
 -spec conv_list(Terms :: list(ev_delay())) -> list().
 conv_list([]) ->
-  [];
+    [];
 conv_list([Term | Terms]) ->
-  [eval_term(Term) | conv_list(Terms)].
+    [eval_term(Term) | conv_list(Terms)].
