@@ -347,7 +347,7 @@ analyze(Monitor, Event) ->
 %% }
 -spec process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) -> Event | [Event] when
     EventBuffer :: [event:int_event()] | [],
-    Event :: event:int_event(),
+    Event :: event:int_event() | event:evm_event(),
     SYSTABLE :: event_table_parser:event_table(),
     Monitor :: monitor().
 process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) ->
