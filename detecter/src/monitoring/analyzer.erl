@@ -328,10 +328,14 @@ analyze(Monitor, Event) ->
                     Monitor(Event0);
                 {analyzed, MonitorForMissingEvent, PreviousGeneratedEvent} ->
                     post_to_event_buffer(self(), PreviousGeneratedEvent),
-                    ?TRACE("Analysis of both events ~w and ~w completed.", [
-                        PreviousGeneratedEvent, Event
-                    ]),
-                    MonitorForMissingEvent(Event)
+                    analyze(MonitorForMissingEvent, Event)
+                    % MonitorForMissingEvent(Event)
+                    % case is_verdict(MonitorForMissingEvent) of
+                    %     true ->
+                    %         MonitorForMissingEvent;
+                    %     false ->
+                    %         MonitorForMissingEvent(Event)
+                    % end
             end
     end.
 

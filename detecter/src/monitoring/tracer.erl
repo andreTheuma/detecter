@@ -1480,7 +1480,7 @@ upd_stats(Stats = #stats{cnt_spawned = Cnt}, {trace, _, spawned, _, _}) ->
 upd_stats(Stats = #stats{cnt_other = Cnt}, Evt) when element(1, Evt) =:= trace ->
     Stats#stats{cnt_other = Cnt + 1};
 
-upd_stats(Stats = #stats{cnt_spawn = Cnt}, {corrupt_payload, _, _}) ->
+upd_stats(Stats = #stats{cnt_corrupt = Cnt}, CorrEvt) when element(1, CorrEvt) =:= corrupt_payload ->
     Stats#stats{cnt_corrupt = Cnt + 1}.
 
 %% @doc Updates the tracer state for the specified event.
@@ -1498,7 +1498,6 @@ upd_stats(Stats = #stats{cnt_spawn = Cnt}, {corrupt_payload, _, _}) ->
     Evt :: event:evm_event().
 upd_state(State = #state{trace = _Trace, stats = Stats}, Event) ->
     State0 = State#state{stats = upd_stats(Stats, Event)},
-    % ?TRACE("STATE UPDATED: ~w FOR EVENT ~w", [State0, Event]),
     ?exec_if_test(State0#state{trace = [Event | _Trace]}, State0).
 
 %%% ----------------------------------------------------------------------------

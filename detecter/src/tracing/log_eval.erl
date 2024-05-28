@@ -204,7 +204,9 @@ eval_event({recv, {pid, _, Pid}, Item}) ->
     {recv, Pid, eval_term(Item)};
 
 eval_event({corrupt_payload, {pid, _, Pid}, Item}) ->
-    {corrupt_payload, Pid, eval_term(Item)}.
+    {corrupt_payload, Pid, eval_term(Item)};
+eval_event({corrupt_payload, {pid, _, Pid}, {pid,_,Pid2}, Item}) ->
+    {corrupt_payload, Pid, Pid2, eval_term(Item)}.
 
 %% @private Evaluates the MFA AST node.
 %%

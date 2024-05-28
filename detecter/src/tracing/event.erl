@@ -26,7 +26,7 @@
 -include("../include/event.hrl").
 
 %%% Public API.
--export([to_evm_event/1]).
+-export([to_evm_event/1, to_int_event/1]).
 
 %%% Types.
 -export_type([int_event/0, evm_event/0,evm_event_atom/0]).
@@ -60,7 +60,8 @@
 %% infrastructure. See {@link erlang:trace/3} for more information.
 
 -type corrupt_event() ::
-{corrupt_payload, PidSrc :: pid(), Msg :: term()}.
+{corrupt_payload, PidSrc :: pid(), Msg :: term()} |
+{corrupt_payload, PidSrc :: pid(), PidTgt :: pid(), Msg :: term()}.
 
 
 %%% ----------------------------------------------------------------------------
@@ -87,3 +88,14 @@ to_evm_event({send, Sender, Receiver, Msg}) ->
   {trace, Sender, send, Msg, Receiver};
 to_evm_event({recv, Receiver, Msg}) ->
   {trace, Receiver, 'receive', Msg}.
+
+to_int_event({trace, Parent, spawn, Child, Mfa}) ->
+  {fork, Parent, Child, Mfa};
+to_int_event({trace, Child, spawned, Parent, Mfa}) ->
+  {init, Child, Parent, Mfa};
+to_int_event({trace, Process, exit, Reason}) ->
+  {exit, Process, Reason};
+to_int_event({trace, Sender, send, Msg, Receiver}) ->
+  {send, Sender, Receiver, Msg};
+to_int_event({trace, Receiver, 'receive', Msg}) ->
+  {recv, Receiver, Msg}.

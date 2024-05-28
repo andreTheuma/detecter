@@ -44,7 +44,7 @@ event -> send '(' pid ',' pid ',' item ')'      : {send, '$3', '$5', '$7'}.
 event -> recv '(' pid ',' item ')'              : {recv, '$3', '$5'}.
 
 % Corrupt events - > returns the corrupt event and the pid of the event that was corrupted.
-event -> corrupt_payload '(' pid ',' pid ',' mfa ')' : {corrupt_payload, '$3', '$5', '$7'}.
+% event -> corrupt_payload '(' pid ',' pid ',' mfa ')' : {corrupt_payload, '$3', '$5', '$7'}.
 event -> corrupt_payload '(' pid ',' item ')'         : {corrupt_payload, '$3', '$5'}.
 event -> corrupt_payload '(' pid ',' pid ',' item ')' : {corrupt_payload, '$3', '$5', '$7'}.
 

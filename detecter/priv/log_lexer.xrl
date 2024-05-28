@@ -66,10 +66,6 @@ recv                      : {token, {recv, TokenLine}}.
 % Corrupt event token.
 X                    : {token, {corrupt_payload, TokenLine}}.
 
-% Corrupt payload token.
-% "{CORRUPT_PAYLOAD}"       : {token, {corrupt_payload, TokenLine, TokenChars}}.
-% _X_\(<([A-Za-z0-9]+(\.[A-Za-z0-9]+)+)>,\{[^}]*\}\}\) : {token, {corrupt_payload, TokenLine, TokenChars}}.
-
 %%% ----------------------------------------------------------------------------
 %%% Erlang supporting macros.
 %%% ----------------------------------------------------------------------------
