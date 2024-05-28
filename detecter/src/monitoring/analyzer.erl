@@ -310,25 +310,28 @@ analyze(Monitor, Event) ->
         false ->
             % Monitor is not yet at the verdict state and can analyze the event.
             EventBuffer = return_event_buffer(self()),
-            
+
             {ok, SYSTABLE} = event_table_parser:parse_table(?EVENT_TABLE_FILEPATH),
             case process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) of
                 PossibleEventList when is_list(PossibleEventList) ->
                     % Corrupted event detected. Monitor is not able to analyze it.
+                    ?INFO("\033[31mCorrupt event ~w, generated event list ~p\033[0m", [
+                        Event, PossibleEventList
+                    ]),
                     post_to_event_buffer(self(), PossibleEventList),
                     ?TRACE("Analyser skipping corrupted event ~w.", [Event]),
                     Monitor;
-                Event0 when element(1,Event0) =/= analyzed ->
+                Event0 when element(1, Event0) =/= analyzed ->
                     % Monitor is not yet at the verdict state and can analyze the event.
                     post_to_event_buffer(self(), Event0),
                     ?TRACE("Analyzing event ~w.", [Event0]),
                     Monitor(Event0);
-                {analyzed, NewMonitor, PreviousGeneratedEvent} ->
+                {analyzed, MonitorForMissingEvent, PreviousGeneratedEvent} ->
                     post_to_event_buffer(self(), PreviousGeneratedEvent),
                     ?TRACE("Analysis of both events ~w and ~w completed.", [
-                        Event, PreviousGeneratedEvent
+                        PreviousGeneratedEvent, Event
                     ]),
-                    NewMonitor
+                    MonitorForMissingEvent(Event)
             end
     end.
 
@@ -350,29 +353,19 @@ analyze(Monitor, Event) ->
 process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) ->
     case is_list(EventBuffer) of
         true ->
-            ?TRACE("Event buffer is a list, is ~p.", [EventBuffer]),
-            % The event buffer is only a list when the previous event contained corrupted payload
-            % In this case, we need to generate the missing event, analyze it, check if it is a verdict and then
-            % analyze the current event.
             MissingEvent = regen_eval:generate_missing_event(EventBuffer, Event, SYSTABLE),
             ?TRACE("Silently analyzing generated missing event ~p.", [MissingEvent]),
             post_to_event_buffer(self(), MissingEvent),
-            NewMonitor = analyze(Monitor(MissingEvent),Event),
-            {analyzed, NewMonitor, MissingEvent};
-            
-            % {analyzed, analyze(Monitor(MissingEvent), Event), MissingEvent};
+            MonitorForMissingEvent = analyze(Monitor, MissingEvent),
+            {analyzed, MonitorForMissingEvent, MissingEvent};
         false ->
-            ?TRACE("Event buffer is not a list, is ~p.", [EventBuffer]),
             % The previous event was not corrupted, thus we check the current event for corruption.
             case ?is_corrupt(Event) of
                 true ->
-                    EventList = regen_eval:generate_current_event_list(
+                    regen_eval:generate_current_event_list(
                         EventBuffer, Event, SYSTABLE
-                    ),
-                    ?TRACE("Corrupted event ~w, generated event list ~p.", [Event, EventList]),
-                    EventList;
+                    );
                 false ->
-                    ?TRACE("Event ~w is not corrupted.", [Event]),
                     Event
             end
     end.
@@ -415,7 +408,7 @@ create_event_buffer(Pid) ->
     end.
 
 -spec post_to_event_buffer(Pid, EventList) -> true when
-    EventList :: event:int_event()| event:evm_event() | [event:int_event()] | [event:evm_event()],
+    EventList :: event:int_event() | event:evm_event() | [event:int_event()] | [event:evm_event()],
     Pid :: pid().
 post_to_event_buffer(Pid, EventList) ->
     case ets:info(?ETS_EVENT_BUFFER) of
