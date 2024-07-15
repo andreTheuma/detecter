@@ -90,7 +90,10 @@ char integer float atom string var
 'with' 'when' 'monitor'
 
 % Normalized Safety HML symbols.
-'tt' 'ff' 'max'.
+'tt' 'ff' 'max'
+
+% Corrupt payload operator
+'corrupt_payload'.
 
 
 Rootsymbol forms.
@@ -182,6 +185,7 @@ form -> with mfa monitor shml                   : {form, ?anno('$1'), '$2', '$4'
 shml -> ff                                            : '$1'.
 shml -> var                                           : '$1'.
 shml -> max '(' var '.' shml ')'                      : {max, ?anno('$1'), '$3', '$5'}.
+
 shml -> and '(' shml_seq ')'                          : {'and', ?anno('$1'), length('$3'), '$3'}.
 
 shml_seq -> nec                                       : ['$1'].
@@ -249,9 +253,6 @@ nec -> '[' act ']' shml                               : {nec, ?anno('$1'), '$2',
 
 %%and shml_seq           : [{nec, ?anno('$1'), '$2', '$4'} | '$6'].
 %%shml_seq -> '$empty'                                : [].
-
-
-
 
 % Process in var performed a send of msg.
 act -> var ':' var '!' clause                         : {send, ?anno('$1'), '$1', '$3', '$5'}.
