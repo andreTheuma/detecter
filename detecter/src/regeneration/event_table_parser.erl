@@ -25,7 +25,7 @@ parse_table(Filename) ->
             case file_format_checker(Lines) of
                 ok ->
                     EventTable = lists:map(fun string_tokenizer/1, Lines),
-                    {ok, EventTable};
+                    EventTable;
                 {error, Error} ->
                     {error, Error}
             end;

@@ -62,6 +62,15 @@ create_sys_info(InfoTable) ->
             ?TRACE("System Information Table already exists. Returning existing table.", [])
     end.
 
+%% @doc Create the system information AST by wrapping the system information table 
+%% in a syntax tree.
+-spec create_sys_info_ast(InfoTable) -> erl_syntax:syntaxTree()
+    when
+    InfoTable :: event_table_parser:event_table().
+create_sys_info_ast(InfoTable) ->
+    pass.
+
+
 %% @doc Return the system information table.
 %%
 %% {@returns The system information table.}
