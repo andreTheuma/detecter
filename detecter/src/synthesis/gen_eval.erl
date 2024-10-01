@@ -50,7 +50,7 @@
 -define(MFA_SPEC, mfa_spec).
 
 %% Function Look Up Table (FLUT) entry function.
--define(FLUT_SPEC, flut_spec).
+-define(FLU_SPEC, flu_spec).
 
 %% Option definitions and their values.
 %%-define(OPT_INCLUDE, i). % Kept same option name as Erlang compiler.
@@ -346,7 +346,7 @@ compile(Mod, LexerMod, ParserMod, File, Opts) when is_list(Opts) ->
 
                     % write_monitors([FLUTMonitor, Monitor], File, Opts);
                     write_monitor(
-                        create_module(Mod, Ast, ?FLUT_SPEC, FLUTModule, Opts), FLUTFile, Opts
+                        create_module(Mod, Ast, ?FLU_SPEC, FLUTModule, Opts), FLUTFile, Opts
                     );
                 {error, Reason} ->
                     % Error when creating directory.
@@ -558,7 +558,7 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
                         erl_syntax:function(erl_syntax:atom(MonFun), visit_forms(Mod, Ast, Opts))
                     ]
             );
-        ?FLUT_SPEC ->            
+        ?FLU_SPEC ->            
             erl_syntax:revert_forms(
                 Forms
                 ++ [
@@ -577,7 +577,7 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
     Form :: any(),
     Opts :: opts:options().
 visit_unique_forms(_Mod, [], Opts) ->
-    [erl_syntax:clause([erl_syntax:underscore()], none, [erl_syntax:atom(undefined)])];
+    [erl_syntax:clause([], none, [erl_syntax:atom(undefined)])];
 visit_unique_forms(
     Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, Phi} | Forms], Opts
 ) ->
@@ -590,11 +590,9 @@ visit_unique_forms(
 
     FirstPass = Mod:hof_generation(Phi, Opts),
 
-    % FirstPass.
+    % [erl_syntax:clause([], none, FirstPass)].
 
-    [erl_syntax:clause([erl_syntax:underscore()], none, FirstPass)].
-
-% [erl_syntax:clause([erl_syntax:underscore()], none, [FirstPass])].
+[erl_syntax:clause([erl_syntax:underscore()], none, FirstPass)].
 
 %% @private Visits maxHML formula nodes and generates the corresponding syntax
 %% tree describing one monitor (i.e. one formula is mapped to one monitor).

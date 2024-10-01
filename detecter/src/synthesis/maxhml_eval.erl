@@ -148,19 +148,29 @@ parse_file(File) ->
 
 %%% ----------------------------------------------------------------------------
 %%% Functions to generate the higher order functions for the monitor, one time
-%%% for each monitor action.
+%%% for each monitor action. 
+%%% This section also generates the verdict functions for the monitor and the entry (receive) block.
 %%% ----------------------------------------------------------------------------
+%%% 
 -spec generate_verdict_function({Vrd, _}, _Opts) -> erl_syntax:syntaxTree() when
     Vrd :: af_maxhml(),
     _Opts :: opts:options().
 generate_verdict_function({Vrd, _}, _Opts) ->
     case Vrd of
-        ?HML_TRU -> erl_syntax:named_fun_expr(erl_syntax:variable('Acceptance'), [
-            erl_syntax:clause([], none, [erl_syntax:atom(?MON_ACC)])
-        ]);
-        ?HML_FLS -> erl_syntax:named_fun_expr(erl_syntax:variable('Rejection'), [
-            erl_syntax:clause([], none, [erl_syntax:atom(?MON_REJ)])
-        ])
+        ?HML_TRU -> 
+            erl_syntax:infix_expr(
+                erl_syntax:atom('Acceptance'),
+                erl_syntax:operator('='),
+                erl_syntax:fun_expr([
+                    erl_syntax:clause([], none, [erl_syntax:atom(?MON_ACC)])
+                ]));
+        ?HML_FLS ->
+            erl_syntax:infix_expr(
+                erl_syntax:atom('Rejection'),
+                erl_syntax:operator('='),
+                erl_syntax:fun_expr([
+                    erl_syntax:clause([], none, [erl_syntax:atom(?MON_REJ)])
+                ]))
     end.
 
 -spec generate_higher_order_function(Node, Opts) -> erl_syntax:syntaxTree() when
@@ -176,6 +186,7 @@ generate_higher_order_function(Var = {var, _, _Name}, _Opts) ->
     erl_syntax:tuple([erl_syntax:atom(?MON_VAR), Env, Var]);
 generate_higher_order_function({'and', _, Phi, Psi}, _Opts) ->
     ?TRACE("'and' node"),
+    
     [generate_higher_order_function(Phi, _Opts), generate_higher_order_function(Psi, _Opts)];
 
 generate_higher_order_function(Node = {nec, _, {act, _, Pat, Guard}, Phi}, _Opts) ->
@@ -200,15 +211,14 @@ generate_higher_order_function(Node = {nec, _, {act, _, Pat, Guard}, Phi}, _Opts
     CaseExpression = erl_syntax:case_expr(
         Args,
         [
+            % erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [erl_syntax:atom(NextFunctionName)]),
             erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [erl_syntax:atom(NextFunctionName)]),
             erl_syntax:clause([Args], CorruptGuard, [erl_syntax:atom(?MON_CORR)]),
             erl_syntax:clause([erl_syntax:underscore()], none, [erl_syntax:atom(?MON_REJ)])
         ]
     ),
 
-    NamedFunction = erl_syntax:named_fun_expr(
-        erl_syntax:variable(FunctionName),
-        [
+    Function = erl_syntax:fun_expr([
             erl_syntax:clause(
                     if
                         Guard =:= [] ->
@@ -220,11 +230,22 @@ generate_higher_order_function(Node = {nec, _, {act, _, Pat, Guard}, Phi}, _Opts
                 none,
                 [CaseExpression]
             )
-        ]
+        ]),
+
+    FunctionClosure = erl_syntax:infix_expr(
+        erl_syntax:atom(FunctionName),
+        erl_syntax:operator('='),
+        Function
     ),
 
-    ?TRACE("element of phi: ~p", [element(1,Phi)]),
-    [NamedFunction | lists:flatten([generate_higher_order_function(Phi, _Opts)])].
+    % [lists:flatten([generate_higher_order_function(Phi, _Opts)]) | [FunctionClosure]].
+    [FunctionClosure | lists:flatten([generate_higher_order_function(Phi, _Opts)])].
+
+-spec generate_receive_block(Node, Opts) -> erl_syntax:syntaxTree() when
+    Node :: af_maxhml(),
+    Opts :: opts:options().
+generate_receive_block(Node, Opts) -> 
+    pass.
 
 %%% @public Entry point for the generation of higher order functions for the monitor, coming from `gen_eval` module
 %%%
@@ -232,12 +253,20 @@ generate_higher_order_function(Node = {nec, _, {act, _, Pat, Guard}, Phi}, _Opts
     Node :: af_maxhml(),
     Opts :: opts:options().
 hof_generation(Node, Opts) ->
-    FunctionRelations = generate_higher_order_function(Node, Opts),
+    
+    % Important to reverse the list of functions, as the functions cannot have any forward references.
+    FunctionRelations = lists:reverse(generate_higher_order_function(Node, Opts)),
 
     VrdTrue = generate_verdict_function({tt,0},0),
     VrdFalse = generate_verdict_function({ff,0},0),
-    
-    FunctionRelations ++ [VrdTrue, VrdFalse].
+    ReceiveBlock = generate_receive_block(Node, Opts),
+
+    io:format("~p~n", [erl_prettypr:format(VrdTrue)]),
+    io:format("~p~n", [erl_prettypr:format(VrdFalse)]),
+    io:format("~p", [erl_syntax:form_list(FunctionRelations)]),
+
+    % [VrdEntry]. 
+    [VrdTrue, VrdFalse] ++ FunctionRelations.
 
 %%% ----------------------------------------------------------------------------
 %%% Private AST manipulation functions.

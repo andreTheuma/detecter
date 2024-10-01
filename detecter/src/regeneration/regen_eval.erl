@@ -32,7 +32,6 @@ get_previous_events(CurrentEvent, [{Event, PreviousEvents, _} | Rest]) ->
 get_next_events(_, []) ->
     [];
 get_next_events(CurrentEvent, [{Event, _, NextEvents} | Rest]) ->
-    ?TRACE("Current event: ~p~n", [CurrentEvent]),
     CurrentEventAction = atom_to_list(element(1, CurrentEvent)),
     case CurrentEventAction =:= Event of
         true ->
@@ -42,12 +41,12 @@ get_next_events(CurrentEvent, [{Event, _, NextEvents} | Rest]) ->
     end.
 
 -spec generate_current_event_list(PreviousEvent, MissingEventPayload, EventTable) -> EventList when
-    PreviousEvent :: event:evm_event(),
+    PreviousEvent :: event:int_event(),
     MissingEventPayload :: event:corrupt_event(),
     EventTable :: event_table_parser:event_table(),
     EventList :: [event:int_event()].
 generate_current_event_list(PreviousEvent, MissingEventPayload, EventTable) ->
-    PossibleActions = get_next_events(event:to_int_event(PreviousEvent), EventTable),
+    PossibleActions = get_next_events(PreviousEvent, EventTable),
     case MissingEventPayload of
         {corrupt_payload, Pid, Item} ->
             lists:map(fun(Action) -> {Action, Pid, Item} end, PossibleActions);
@@ -59,11 +58,11 @@ generate_current_event_list(PreviousEvent, MissingEventPayload, EventTable) ->
     {ok, Event} | {error, string()}
 when
     PreviousEventList :: [event:int_event()],
-    CurrentEvent :: event:evm_event(),
-    Event :: event:evm_event(),
-    EventTable :: event_table_parser:event_table().
+    CurrentEvent :: event:int_event(),
+    EventTable :: event_table_parser:event_table(),
+    Event :: event:int_event().
 generate_missing_event(PreviousEventList, CurrentEvent, EventTable) ->
-    PreviousEventActionsFromCurrentEvent = get_previous_events(event:to_int_event(CurrentEvent), EventTable),
+    PreviousEventActionsFromCurrentEvent = get_previous_events(CurrentEvent, EventTable),
     case PreviousEventActionsFromCurrentEvent of
         ?EMPTY_EVENT ->
             {error, "Error: No previous events found."};
@@ -75,13 +74,11 @@ generate_missing_event(PreviousEventList, CurrentEvent, EventTable) ->
             case length(GeneratedEventActionList) of
                 1 ->
                     % if the first element of list contains 'receive' change this atom to 'recv'
-                    event:to_evm_event(
                         hd([
                             GeneratedEvent
                          || GeneratedEvent <- PreviousEventList,
                             element(1, GeneratedEvent) =:= hd(GeneratedEventActionList)
-                        ])
-                    );
+                        ]);
                 0 ->
                     {error, "Error: No common event found."};
                 _ ->
