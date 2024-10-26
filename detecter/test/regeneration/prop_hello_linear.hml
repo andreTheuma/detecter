@@ -1,9 +1,0 @@
-with
-  hello:greet(_)
-check
-  [{_ <- _, hello:greet(_)}]
-  [ {_ ? {_, {hello, String}}}](
-    [{_:_ ! {hello, String} when String =:= "Hello, World!"}]tt
-    and
-    [{_:_ ! {hello, String } when String =/= "Hello, World!"}]ff
-  ).
