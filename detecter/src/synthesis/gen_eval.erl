@@ -114,6 +114,11 @@
 %% Monitors.
 -type monitor() :: erl_syntax:syntaxTree().
 
+% ? no idea what im doing here just ask ... do i make a new monitor... do i not?
+% ? this concernt the Function look up and such
+% -type file_lookup_monitor() :: monitor().
+% -type 
+
 %%% Erlang types.
 
 -type abstract_expr() ::
@@ -326,10 +331,10 @@ compile(Mod, LexerMod, ParserMod, File, Opts) when is_list(Opts) ->
                     % is used in -module attribute in synthesized monitor module.
                     Module = list_to_atom(filename:basename(File, ?EXT_HML)),
 
-                    FLUTModule = list_to_atom(filename:basename(File, ?EXT_HML) ++ "_flut"),
-                    FLUTFile = filename:join([
+                    FLUModule = list_to_atom(filename:basename(File, ?EXT_HML) ++ "_flu"),
+                    FLUFile = filename:join([
                         opts:out_dir_opt(Opts),
-                        filename:basename(File, ?EXT_HML) ++ "_flut" ++ ?EXT_HML
+                        filename:basename(File, ?EXT_HML) ++ "_flu" ++ ?EXT_HML
                     ]),
 
                     % Synthesize monitor from parsed syntax tree in the form of an Erlang
@@ -337,17 +342,18 @@ compile(Mod, LexerMod, ParserMod, File, Opts) when is_list(Opts) ->
 
                     % ! THIS WORKS, UNCOMMENT AFTER
                     % Two passes are required to generate the monitor. The first pass
-                    % generates the FLUT, which is the look up table for the monitor. The
-                    % second pass generates the monitor itself, which references the FLUT.
+                    % generates the FLU, which is the function look up for the monitor. The
+                    % second pass generates the monitor itself, which references the FLU.
 
-                    % FLUTMonitor = write_monitor(create_module(Mod, Ast, ?FLUT_SPEC, FLUTModule, Opts), FLUTFile, Opts);
+                    FLUMonitor = write_lookup_monitor(create_module(Mod, Ast, ?FLU_SPEC, FLUModule, Opts), FLUFile, Opts),
 
                     % Monitor = write_monitor(create_module(Mod, Ast, ?MFA_SPEC, Module, Opts), File, Opts),
 
-                    % write_monitors([FLUTMonitor, Monitor], File, Opts);
-                    write_monitor(
-                        create_module(Mod, Ast, ?FLU_SPEC, FLUTModule, Opts), FLUTFile, Opts
-                    );
+                    % write_monitors([FLUMonitor, Monitor], File, Opts);
+                    % write_monitor(
+                    %     create_module(Mod, Ast, ?FLU_SPEC, FLUModule, Opts), FLUFile, Opts
+                    % );
+                    FLUMonitor;
                 {error, Reason} ->
                     % Error when creating directory.
                     erlang:raise(error, Reason, erlang:get_stacktrace())
@@ -542,12 +548,23 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
     ),
 
     % Generate module base and attribute meta information.
-    Forms = ?Q([
-        "-module('@Module@').",
-        "-author(\"detectEr\").",
-        "-generated('@Date@').",
-        "-export(['@MonFun@'/1])."
-    ]),
+    Forms =
+        if
+            MonFun =:= ?MFA_SPEC ->
+                ?Q([
+                    "-module('@Module@').",
+                    "-author(\"detectEr\").",
+                    "-generated('@Date@').",
+                    "-export(['@MonFun@'/1])."
+                ]);
+            MonFun =:= ?FLU_SPEC ->
+                ?Q([
+                    "-module('@Module@').",
+                    "-author(\"detectEr\").",
+                    "-generated('@Date@').",
+                    "-export(['@MonFun@'/0])."
+                ])
+        end,
 
     % Create monitor module.
     case MonFun of
@@ -558,14 +575,15 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
                         erl_syntax:function(erl_syntax:atom(MonFun), visit_forms(Mod, Ast, Opts))
                     ]
             );
-        ?FLU_SPEC ->            
+        ?FLU_SPEC ->
             erl_syntax:revert_forms(
-                Forms
-                ++ [
-                    erl_syntax:function(erl_syntax:atom(MonFun), 
-                        visit_unique_forms(Mod, Ast, Opts)
-                    )
-                ]
+                Forms ++
+                    [
+                        erl_syntax:function(
+                            erl_syntax:atom(MonFun),
+                            visit_unique_forms(Mod, Ast, Opts)
+                        )
+                    ]
             )
     end.
 
@@ -581,18 +599,14 @@ visit_unique_forms(_Mod, [], Opts) ->
 visit_unique_forms(
     Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, Phi} | Forms], Opts
 ) ->
-    % ?DEBUG("Form: ~p.", [Form]),
-    % ?DEBUG("Guard: ~p.", [Guard]),
-    % ?DEBUG("MFArgs: ~p.", [MFArgs]),
-
-    MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
+    % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
 
     FirstPass = Mod:hof_generation(Phi, Opts),
 
     % [erl_syntax:clause([], none, FirstPass)].
 
-[erl_syntax:clause([erl_syntax:underscore()], none, FirstPass)].
+    [erl_syntax:clause([], none, FirstPass)].
 
 %% @private Visits maxHML formula nodes and generates the corresponding syntax
 %% tree describing one monitor (i.e. one formula is mapped to one monitor).
@@ -646,6 +660,49 @@ write_monitors([{error, Errors, Warnings} | Monitors], File, Opts) ->
     show_warnings(Warnings),
     write_monitors(Monitors, File, Opts).
 
+%% @private Writes the function look up monitor to the specified file. 
+-spec write_lookup_monitor(Ast, File, Opts) -> {ok, _, _, _} | {error, errors(), warnings()} when
+    Ast :: monitor(),
+    File :: file:filename(),
+    Opts :: opts:options().
+write_lookup_monitor(Ast, File, Opts)
+->
+    % Create base filename, taking into account the output directory specified in
+    % the compiler options.
+    FileBase = filename:join([opts:out_dir_opt(Opts), filename:basename(File, ?EXT_HML)]),
+
+    % Open file for writing and write Erlang source or beam code depending on
+    % the specified compiler options.
+    % Open file for writing. File extension depends on specified compiler options.
+    {ok, IoDev} = file:open(
+        FileBase ++
+            case opts:erl_opt(Opts) of
+                true -> ?EXT_ERL;
+                _ -> ?EXT_BEAM
+            end,
+        [write]
+    ),
+
+    % Write monitor Erlang or beam source code depending on specified compiler
+    % options.
+    case opts:erl_opt(Opts) of
+        true ->
+            % ? Figure out how to do linting with this AST... something wrong with unbound variables
+            % ?DEBUG("AST: ~p.", [Ast]),
+            list_erl(IoDev,Ast);
+            % write_erl(IoDev, Ast, File, compile_opts(Opts));
+        _ ->
+            write_beam(IoDev, Ast, File, compile_opts(Opts))
+    end,
+
+    % Close file.
+    file:close(IoDev).
+
+%% @private Writes the monitor to the specified file.
+-spec write_monitor(Ast, File, Opts) -> {ok, _, _, _} | {error, errors(), warnings()} when
+    Ast :: monitor(),
+    File :: file:filename(),
+    Opts :: opts:options().
 write_monitor(Ast, File, Opts) ->
     % Create base filename, taking into account the output directory specified in
     % the compiler options.
@@ -685,6 +742,7 @@ write_erl(IoDev, Ast, File, CompileOpts) ->
             list_erl(IoDev, Ast),
             Ok;
         Error = {error, Errors, Warnings} ->
+            ?DEBUG("We got the error here ~p: ", [Errors]),
             show_errors(Errors),
             show_warnings(Warnings),
             Error
@@ -722,7 +780,7 @@ list_beam(IoDev, Beam) ->
 
 show_error(File, Error) ->
     {Line, Desc} = format_error(Error),
-    io:format("~s:~b: ~s~n", [File, Line, Desc]).
+    io:format("~s:~b: Error: ~s~n", [File, Line, Desc]).
 
 show_errors([]) ->
     ok;
