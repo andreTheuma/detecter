@@ -200,6 +200,7 @@ online_detach(Pid) ->
 %% }
 -spec stop() -> ok | {error, not_started}.
 stop() ->
+  analyzer:delete_event_buffer(),
   tracer:stop(),
   trace_lib:stop().
 

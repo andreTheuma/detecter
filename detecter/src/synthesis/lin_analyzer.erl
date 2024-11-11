@@ -917,7 +917,6 @@ do_monitor(Event, VerdictFun) when is_function(VerdictFun, 2) ->
           end
       end,
 
-      % TODO: IF EVENT IS MISSING, CREATE A MESSAGE QUEUE TO STORE EVENTS, AND SKIP TO THE NEXT EVENT. WHEN NEXT EVENT IS RECEIVED, PICK UP THE NEXT EVEN AND LAST TWO EVENTS, AND GENERATE THE CURRENT EVENT. 
 
       % Analyze event. At this point, monitor might have reached a verdict.
       % Check whether verdict is reached to enable immediate detection, should

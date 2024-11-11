@@ -35,7 +35,7 @@
 -export([parse_string/1, parse_file/1]).
 
 -export([generate_monitor_table/1]).
--export([hof_generation/2]).
+-export([modularise_hml/2, generate_init_block/2]).
 
 %%% Callbacks/Internal.
 -export([visit/2]).
@@ -71,6 +71,15 @@
     case Node of
         {?HML_TRU, _} -> true;
         {?HML_FLS, _} -> true;
+        % {?HML_VAR,_,_} -> true;
+        _ -> false
+    end
+).
+
+-define(IS_RECURSIVE_HML(Node),
+    case Node of
+        % {?HML_MAX, _, _, _} -> true;
+        {?HML_VAR, _, _} -> true;
         _ -> false
     end
 ).
@@ -167,76 +176,83 @@ parse_file(File) ->
 generate_verdict_function({Vrd, _}, _Opts) ->
     case Vrd of
         ?HML_TRU ->
-            erl_syntax:infix_expr(
-                erl_syntax:variable("Acceptance"),
-                erl_syntax:operator('='),
-                erl_syntax:fun_expr([
-                    erl_syntax:clause([], none, [erl_syntax:atom(?MON_ACC)])
-                ])
+            erl_syntax:function(
+                erl_syntax:atom(generate_function_name({Vrd, 0})),
+                [erl_syntax:clause([], none, [erl_syntax:atom(?MON_ACC)])]
             );
         ?HML_FLS ->
-            erl_syntax:infix_expr(
-                erl_syntax:variable("Rejection"),
-                erl_syntax:operator('='),
-                erl_syntax:fun_expr([
-                    erl_syntax:clause([], none, [erl_syntax:atom(?MON_REJ)])
-                ])
+            erl_syntax:function(
+                erl_syntax:atom(generate_function_name({Vrd, 0})),
+                [erl_syntax:clause([], none, [erl_syntax:atom(?MON_REJ)])]
             );
         ?HML_CORR ->
-            erl_syntax:infix_expr(
-                erl_syntax:variable("Corrupt"),
-                erl_syntax:operator('='),
-                erl_syntax:fun_expr([
-                    erl_syntax:clause([], none, [erl_syntax:atom(?MON_CORR)])
-                ])
+            erl_syntax:function(
+                erl_syntax:atom("corrupt"),
+                [erl_syntax:clause([], none, [erl_syntax:atom(?MON_CORR)])]
             )
     end.
 
--spec generate_higher_order_function(Node, Opts) -> erl_syntax:syntaxTree() when
+-spec generate_function(Node, Opts) -> erl_syntax:syntaxTree() when
     Node :: af_maxhml(),
     Opts :: opts:options().
-generate_higher_order_function(Node = {Vrd, LineNumber}, _Opts) when
+generate_function(Node = {Vrd, LineNumber}, _Opts) when
     Vrd =:= ?HML_TRU; Vrd =:= ?HML_FLS
 ->
-    ?TRACE("Verdict node from src line ~p is consumed. ~n", [LineNumber]),
     [];
-generate_higher_order_function(
+generate_function(
     Node = {?HML_NEC, NecLineNumber, Phi = {act, _, Pat = {init, _, _, _, _}, Guard}, Psi}, _Opts
 ) ->
-    ?TRACE("init node from src line ~p is consumed. ~n", [NecLineNumber]),
-    generate_higher_order_function(Psi, _Opts);
-generate_higher_order_function(Var = {?HML_VAR, _, _Name}, _Opts) ->
-    ?TRACE("Generating higher order function for 'var' node ~p. ~n ", [_Name]),
-    Env = get_env(Var),
-    erl_syntax:tuple([erl_syntax:atom(?MON_VAR), Env, Var]);
-generate_higher_order_function(Node = {?HML_MAX, _, Var = {?HML_VAR, _, _}, Phi}, _Opts) ->
-    ?TRACE("Generating higher order function for 'max' node ~p. ~n ", [Node]),
-    ?TRACE("Phi for max: ~p ~n", [Phi]),
+    generate_function(Psi, _Opts);
+generate_function(Var = {?HML_VAR, _, _Name}, _Opts) ->
 
-    FunctionName = generate_function_name(Node),
+    ?TRACE("Generating function for 'var' node ~p. ~n ", [_Name]),
+    FunctionName = generate_function_name(Var),
     % FunctionArgs = lists:usort(
-    %     lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(Phi)]])
+    %     lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(Var, [])]])
     % ),
+    % ?TRACE("Function args are ~p. ~n", [FunctionArgs]),
+    % [erl_syntax:function(erl_syntax:atom(FunctionName), [  erl_syntax:clause([], none, [erl_syntax:atom(?MON_VAR)])])];
+    [];
 
-    NextFunctionName = generate_function_name(Phi),
-    NextFunctionArgs = lists:usort(
-        lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(Phi)]])
-    ),
+generate_function(Node = {?HML_MAX, LineNumber, Var = {?HML_VAR, _, _}, Phi}, _Opts) ->
+    
+    FunctionName = generate_function_name(Node),
+    ?TRACE("Generating function ~p for 'max' node from src line ~p. ~n ", [FunctionName,LineNumber]),
+    FunctionArgs = 
+        case persistent_term:get(FunctionName, empty) of
+            empty ->
+                persistent_term:put(FunctionName, generate_function_args(Node, [])),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)])
+        end,
 
+ NextFunctionName = generate_function_name(Phi),
+    NextFunctionArgs = 
+        case persistent_term:get(NextFunctionName, empty) of
+            empty ->
+                persistent_term:put(NextFunctionName, generate_function_args(Phi, [])),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)])
+        end,
+
+% ?DOUBLE CHECK THIS SECTION
     Clause = erl_syntax:clause(
-        % [gen_eval:pat_tuple(Pat)],
-        [],
+        FunctionArgs,
         none,
-        [erl_syntax:application(erl_syntax:variable(NextFunctionName), NextFunctionArgs)]
+        [erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
     ),
-    Fun = erl_syntax:named_fun_expr(erl_syntax:variable("X"), [Clause]),
-    FunctionClosure = erl_syntax:infix_expr(
-        erl_syntax:variable(FunctionName),
-        erl_syntax:operator('='),
-        Fun
+
+    Function = erl_syntax:function(
+        erl_syntax:atom(FunctionName),
+        [Clause]
     ),
-    [FunctionClosure | lists:flatten([generate_higher_order_function(Phi, _Opts)])];
-generate_higher_order_function(
+    
+    ?TRACE("Generated function ~p. ~n", [FunctionName]),
+
+    [Function | lists:flatten([generate_function(Phi, _Opts)])];
+generate_function(
     OuterNode =
         {?HML_AND, _,
             InnerLeftNode =
@@ -246,38 +262,58 @@ generate_higher_order_function(
                     PsiRight}},
     _Opts
 ) ->
-    ?TRACE("Generating higher order functions for 'and' node from src lines ~p and ~p. ~n ", [
-        LineNumberLeft, LineNumberRight
+    
+    LeftNodeFunctionName = generate_function_name(InnerLeftNode),
+    RightNodeFunctionName = generate_function_name(InnerRightNode),
+    CompositeFunctionName = list_to_atom(
+        atom_to_list(LeftNodeFunctionName) ++ atom_to_list(RightNodeFunctionName)
+    ),
+
+    ?TRACE("Generating function ~p for 'and' node from src lines ~p and ~p. ~n ", [
+       CompositeFunctionName, LineNumberLeft, LineNumberRight
     ]),
 
-    LeftNodeFunctionName = generate_function_name(InnerLeftNode),
-    LeftNodeArgs = lists:usort(
-        lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(InnerLeftNode)]])
-    ),
-    PsiLeftFunctionArgs = lists:usort(
-        lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(PsiLeft)]])
-    ),
+    BoundVarsLeft = extract_bound_vars_from_guard(OuterNode),
 
-    RightNodeFunctionName = generate_function_name(InnerRightNode),
-    RightNodeArgs = lists:usort(
-        lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(InnerRightNode)]])
-    ),
-    PsiRightFunctionArgs = lists:usort(
-        lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(PsiRight)]])
-    ),
+    LeftNodeArgs = lists:flatten([erl_syntax:variable(V) || V <- generate_function_args(InnerLeftNode, BoundVarsLeft)]),
+    PsiBoundVarsLeft = extract_bound_vars_from_guard(PsiLeft),
+    PsiLeftFunctionArgs = 
+        case persistent_term:get(LeftNodeFunctionName, empty) of
+            empty ->
+                persistent_term:put(LeftNodeFunctionName, generate_function_args(PsiLeft, PsiBoundVarsLeft)),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(LeftNodeFunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(LeftNodeFunctionName)])
+        end,
 
-    %? removes duplicated variables...this is temporary workaround and should be proved. It could
-    %? be that the variables also change order...not too sure yet
+    BoundVarsRight = extract_bound_vars_from_guard(OuterNode),
+    RightNodeArgs = lists:flatten([erl_syntax:variable(V) || V <- generate_function_args(InnerRightNode, BoundVarsRight)]),
+    PsiBoundVarsRight = extract_bound_vars_from_guard(PsiRight),
+    PsiRightFunctionArgs = 
+        case persistent_term:get(RightNodeFunctionName, empty) of
+            empty ->
+                persistent_term:put(RightNodeFunctionName, generate_function_args(PsiRight, PsiBoundVarsRight)),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(RightNodeFunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(RightNodeFunctionName)])
+        end,
 
-    CompositeFunctionArgs = lists:usort(lists:flatten([LeftNodeArgs, RightNodeArgs])),
-    CompositeFunctionName = LeftNodeFunctionName ++ RightNodeFunctionName,
-
+    CompositeFunctionArgs = 
+        case persistent_term:get(CompositeFunctionName, empty) of
+            empty ->
+                persistent_term:put(CompositeFunctionName, lists:flatten([LeftNodeArgs, RightNodeArgs])),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(CompositeFunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(CompositeFunctionName)])
+        end,
+   
+ 
     LeftNodeClause = erl_syntax:clause(
         [gen_eval:pat_tuple(PatPhiLeft)],
         GuardPhiLeft,
         [
             erl_syntax:application(
-                erl_syntax:variable(generate_function_name(InnerLeftNode)), PsiLeftFunctionArgs
+                erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs
             )
         ]
     ),
@@ -287,136 +323,135 @@ generate_higher_order_function(
         GuardPhiRight,
         [
             erl_syntax:application(
-                erl_syntax:variable(generate_function_name(InnerRightNode)), PsiRightFunctionArgs
+                erl_syntax:variable(RightNodeFunctionName), PsiRightFunctionArgs
             )
         ]
     ),
 
-    ReceiveExpr = erl_syntax:receive_expr([LeftNodeClause, RightNodeClause]),
+    ReceiveClause = erl_syntax:clause(
+        CompositeFunctionArgs,
+        none,
+        [erl_syntax:receive_expr([LeftNodeClause, RightNodeClause])]
+    ),
 
-    Fun = erl_syntax:fun_expr([
-        erl_syntax:clause(
-            CompositeFunctionArgs,
-            none,
-            [ReceiveExpr]
-        )
-    ]),
-
-    FunctionClosure = erl_syntax:infix_expr(
-        erl_syntax:variable(CompositeFunctionName),
-        erl_syntax:operator('='),
-        Fun
+    Function = erl_syntax:function(
+        erl_syntax:atom(CompositeFunctionName),
+        [ReceiveClause]
     ),
 
     ?TRACE("Generated function ~p. ~n", [CompositeFunctionName]),
     [
-        FunctionClosure
+        Function
         | lists:flatten([
-            generate_higher_order_function(InnerLeftNode, _Opts),
-            generate_higher_order_function(InnerRightNode, _Opts)
+            generate_function(InnerLeftNode, _Opts), generate_function(InnerRightNode, _Opts)
         ])
     ];
-generate_higher_order_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opts) ->
-    ?TRACE("Generating higher order function for 'nec' node from src line ~p. ~n ", [LineNumber]),
-
+generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opts) ->
+    
+    BoundVars = extract_bound_vars_from_guard(Node),
     FunctionName = generate_function_name(Node),
+    ?TRACE("Generating function ~p for 'nec' node from src line ~p. ~n ", [FunctionName, LineNumber]),
+    FunctionArgs = 
+        case persistent_term:get(FunctionName, empty) of
+            empty ->
+                persistent_term:put(FunctionName, generate_function_args(Node, BoundVars)),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)])
+        end,
 
+
+    NextBoundVars = extract_bound_vars_from_guard(Phi),
     NextFunctionName = generate_function_name(Phi),
-    NextFunctionArgs = lists:usort(
-        lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(Phi)]])
-    ),
-
-    % CorruptGuard = erl_syntax:infix_expr(
-    %     erl_syntax:application(
-    %         erl_syntax:atom(element),
-    %         [erl_syntax:integer(1), Args]
-    %     ),
-    %     erl_syntax:operator('=:='),
-    %     erl_syntax:atom('corrupt_payload')
-    % ),
+    NextFunctionArgs = 
+        case persistent_term:get(NextFunctionName, empty) of
+            empty ->
+                persistent_term:put(NextFunctionName, generate_function_args(Phi, NextBoundVars)),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)])
+        end,
 
     Clause = erl_syntax:clause(
         [gen_eval:pat_tuple(Pat)],
         Guard,
-        [erl_syntax:application(erl_syntax:variable(NextFunctionName), NextFunctionArgs)]
+        [erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
     ),
 
-    ReceiveExpr = erl_syntax:receive_expr([Clause]),
+    ReceiveClause = erl_syntax:clause(
+        FunctionArgs,
+        none,
+        [erl_syntax:receive_expr([Clause])]
+    ),
 
-    Fun = erl_syntax:fun_expr(
+    Function = erl_syntax:function(
+        erl_syntax:atom(FunctionName),
         case ?IS_TERMINATING_HML(Phi) of
             true ->
-                ?TRACE("Terminating function - Atomic termination generated. ~n"),
-                [
-                    erl_syntax:clause([], none, erl_syntax:clause_body(Clause))
-                ];
+                ?TRACE("Terminating function detected - Atomic termination generated. ~n"),
+                [erl_syntax:clause([], none, erl_syntax:clause_body(Clause))];
             _ ->
-                [
-                    erl_syntax:clause(
-                        if
-                            Guard =:= [] ->
-                                [gen_eval:pat_tuple(Pat)];
-                            true ->
-                                lists:flatten([
-                                    [gen_eval:pat_tuple(Pat)],
-                                    [
-                                        erl_syntax:variable(V)
-                                     || V <- extract_vars_from_guard(Guard, Pat)
-                                    ]
-                                ])
-                        end,
-                        none,
-                        [ReceiveExpr]
-                    )
-                ]
+                case ?IS_RECURSIVE_HML(Phi) of
+                    true ->
+                        ?TRACE("Recursive function detected - Recursive call generated. ~n"),
+                        [erl_syntax:clause(FunctionArgs, none, erl_syntax:clause_body(Clause))];
+                    _ ->
+                        [ReceiveClause]
+                    end
         end
     ),
 
-    FunctionClosure = erl_syntax:infix_expr(
-        erl_syntax:variable(FunctionName),
-        erl_syntax:operator('='),
-        Fun
-    ),
-
     ?TRACE("Generated function ~p. ~n", [FunctionName]),
-    [FunctionClosure | lists:flatten([generate_higher_order_function(Phi, _Opts)])].
 
-%% @private Generates the receive block for the function look up. This
+    [Function | lists:flatten([generate_function(Phi, _Opts)])].
+
+    % CorruptGuard = erl_syntax:infix_expr(
+    % %     erl_syntax:application(
+    % %         erl_syntax:atom(element),
+    % %         [erl_syntax:integer(1), Args]
+    % %     ),
+    % %     erl_syntax:operator('=:='),
+    % %     erl_syntax:atom('corrupt_payload')
+    % % ),
+
+
+%% @public Generates the receive block for the function look up. This
 %% is the entry point for the look up of the function to be executed.
 -spec generate_init_block(Node, _Opts) -> erl_syntax:syntaxTree() when
     Node :: af_maxhml(),
     _Opts :: opts:options().
 generate_init_block({?HML_NEC, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}, Phi}, _Opts) ->
     ?TRACE("Generating init block for 'nec' node. ~n"),
-    Var = erl_syntax:variable(generate_function_name(Phi)),
-    Args = [],
 
+    NextFunctionName = generate_function_name(Phi),
+    NextFunctionArgs = generate_function_args(Phi, []),
+
+    persistent_term:put(NextFunctionName, NextFunctionArgs),
     AnonFunEntry = erl_syntax:clause([gen_eval:pat_tuple(Pat)], none, [
-        erl_syntax:application(Var, Args)
+        erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
     ]),
 
     ReceiveExpr = erl_syntax:receive_expr([AnonFunEntry]),
-
+    ?TRACE("Generated init block for 'nec' node. ~n"),
+    
     [ReceiveExpr];
 generate_init_block(_, _) ->
     ?ERROR("Invalid node for init block generation.").
 
-%%% @public Entry point for the generation of higher order functions for the monitor, coming from `gen_eval` module
+%%% @public Modularises the functions required for the monitor, coming from `gen_eval` module
 %%%
--spec hof_generation(Node, Opts) -> erl_syntax:syntaxTree() when
+-spec modularise_hml(Node, Opts) -> erl_syntax:syntaxTree() when
     Node :: af_maxhml(),
     Opts :: opts:options().
-hof_generation(Node, Opts) ->
-    % Important to reverse the list of functions, as the functions cannot have any forward references.
-    FunctionRelations = lists:reverse(generate_higher_order_function(Node, Opts)),
+modularise_hml(Node, Opts) ->
 
-    InitBlock = generate_init_block(Node, Opts),
+    Functions = generate_function(Node, Opts),
 
     VrdTrue = generate_verdict_function({tt, 0}, 0),
     VrdFalse = generate_verdict_function({ff, 0}, 0),
     VrdCorrupt = generate_verdict_function({corr, 0}, 0),
 
-    [VrdTrue, VrdFalse, VrdCorrupt] ++ FunctionRelations ++ InitBlock.
+    lists:flatten([VrdTrue, VrdFalse, VrdCorrupt, Functions]).
 
 %%% ----------------------------------------------------------------------------
 %%% Private AST manipulation functions.
@@ -469,14 +504,14 @@ visit(Node = {Mod, _, {act, _, Pat, Guard}, Phi}, _Opts) when
 ->
     ?TRACE("Visiting '~s' node ~p.", [Mod, Node]),
 
-    CorrGuard = erl_syntax:infix_expr(
-        erl_syntax:application(
-            erl_syntax:atom(element),
-            [erl_syntax:integer(1), erl_syntax:variable('_Pat')]
-        ),
-        erl_syntax:operator('=:='),
-        erl_syntax:atom(corrupt_payload)
-    ),
+    % CorrGuard = erl_syntax:infix_expr(
+    %     erl_syntax:application(
+    %         erl_syntax:atom(element),
+    %         [erl_syntax:integer(1), erl_syntax:variable('_Pat')]
+    %     ),
+    %     erl_syntax:operator('=:='),
+    %     erl_syntax:atom(corrupt_payload)
+    % ),
 
     % Encode the predicate functions for the action and its inverse. The predicate
     % functions are mutually-exclusive. This means that for any pattern and guard
@@ -496,13 +531,13 @@ visit(Node = {Mod, _, {act, _, Pat, Guard}, Phi}, _Opts) when
 
     Pred = erl_syntax:fun_expr([
         erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [erl_syntax:atom(true)]),
-        erl_syntax:clause([gen_eval:corrupted_pat_tuple()], CorrGuard, [erl_syntax:atom(?MON_CORR)]),
+        % erl_syntax:clause([gen_eval:corrupted_pat_tuple()], CorrGuard, [erl_syntax:atom(?MON_CORR)]),
         erl_syntax:clause([erl_syntax:underscore()], none, [erl_syntax:atom(false)])
     ]),
 
     InvPred = erl_syntax:fun_expr([
         erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [erl_syntax:atom(false)]),
-        erl_syntax:clause([gen_eval:corrupted_pat_tuple()], CorrGuard, [erl_syntax:atom(?MON_CORR)]),
+        % erl_syntax:clause([gen_eval:corrupted_pat_tuple()], CorrGuard, [erl_syntax:atom(?MON_CORR)]),
         erl_syntax:clause([erl_syntax:underscore()], none, [erl_syntax:atom(true)])
     ]),
 
@@ -514,11 +549,11 @@ visit(Node = {Mod, _, {act, _, Pat, Guard}, Phi}, _Opts) when
         erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [visit(Phi, _Opts)])
     ]),
 
-    CorrBody = erl_syntax:named_fun_expr(erl_syntax:variable('CorruptBody'), [
-        erl_syntax:clause([gen_eval:corrupted_pat_tuple()], CorrGuard, [
-            erl_syntax:tuple([erl_syntax:atom(?MON_CORR), gen_corr_env()])
-        ])
-    ]),
+    % CorrBody = erl_syntax:named_fun_expr(erl_syntax:variable('CorruptBody'), [
+    %     erl_syntax:clause([gen_eval:corrupted_pat_tuple()], CorrGuard, [
+    %         erl_syntax:tuple([erl_syntax:atom(?MON_CORR), gen_corr_env()])
+    %     ])
+    % ]),
 
     VrdBody = erl_syntax:fun_expr([
         erl_syntax:clause([erl_syntax:underscore()], none, [
@@ -536,10 +571,12 @@ visit(Node = {Mod, _, {act, _, Pat, Guard}, Phi}, _Opts) when
 
     % Encode left and right action nodes.
     LeftAct = erl_syntax:tuple(
-        [erl_syntax:atom(act), get_env(Node, Ph, true), Pred, CorrBody, CntBody]
+        % [erl_syntax:atom(act), get_env(Node, Ph, true), Pred, CorrBody, CntBody]
+        [erl_syntax:atom(act), get_env(Node, Ph, true), Pred, CntBody]
     ),
     RightAct = erl_syntax:tuple(
-        [erl_syntax:atom(act), get_env(Node, Ph, false), InvPred, CorrBody, VrdBody]
+        % [erl_syntax:atom(act), get_env(Node, Ph, false), InvPred, CorrBody, VrdBody]
+        [erl_syntax:atom(act), get_env(Node, Ph, false), InvPred, VrdBody]
     ),
 
     % CorruptAct = erl_syntax:tuple(
@@ -554,59 +591,79 @@ visit(Node = {Mod, _, {act, _, Pat, Guard}, Phi}, _Opts) when
 %%% Private monitor helper functions for corruption detection.
 %%% ----------------------------------------------------------------------------
 %%% @private Generates the function name for the given node.
--spec generate_function_name(Node) -> string() when
+-spec generate_function_name(Node) -> atom() when
     Node :: af_maxhml().
 generate_function_name({?HML_VAR, LineNumber, Name}) ->
-    string:titlecase(atom_to_list(Name) ++ integer_to_list(LineNumber));
+    list_to_atom(string:lowercase(atom_to_list(Name)));
 generate_function_name(Node = {?HML_MAX, LineNumber, Var = {_, _, Name}, _}) ->
-    string:titlecase(atom_to_list(Name) ++ integer_to_list(LineNumber));
+    generate_function_name(Var);
 generate_function_name(
     {?HML_AND, _, Phi = {_, PhiLineNumber, PhiPat, _}, Psi = {_, PsiLineNumber, PsiPat, _}}
 ) ->
-    ?TRACE("Generating composite function name for 'and' nodes from src lines ~p and ~p. ~n ", [
-        PhiLineNumber, PsiLineNumber
-    ]),
+
     Action1 = element(1, element(3, PhiPat)),
     Action2 = element(1, element(3, PsiPat)),
-    string:titlecase(atom_to_list(Action1) ++ integer_to_list(PhiLineNumber)) ++
-        string:titlecase(atom_to_list(Action2) ++ integer_to_list(PsiLineNumber));
+    list_to_atom(
+        (string:lowercase(atom_to_list(Action1)) ++ integer_to_list(PhiLineNumber)) ++
+            string:lowercase(atom_to_list(Action2) ++ integer_to_list(PsiLineNumber))
+    );
 generate_function_name({?HML_NEC, NecLineNumber, {_, PhiLineNumber, Pat, _}, _}) ->
-    ?TRACE("Generating function name for 'nec' node from src line ~p. ~n ", [NecLineNumber]),
     Action = element(1, Pat),
-    string:titlecase(atom_to_list(Action) ++ integer_to_list(PhiLineNumber));
+    list_to_atom(atom_to_list(Action) ++ integer_to_list(PhiLineNumber));
 generate_function_name({Verdict, _}) when Verdict =:= ?HML_TRU; Verdict =:= ?HML_FLS ->
-    string:titlecase(
-        if
-            Verdict =:= ?HML_TRU -> "Acceptance";
-            Verdict =:= ?HML_FLS -> "Rejection"
-        end
-    ).
+    case Verdict of
+        ?HML_TRU -> acceptance;
+        ?HML_FLS -> rejection
+    end.
 
-%% @private Generates the function arguments for the given node.
--spec generate_function_args(Node) -> [erl_syntax:syntaxTree()] when
-    Node :: af_maxhml().
-generate_function_args({?HML_VAR,LineNumber,Name}) ->
-    ?TRACE("Consuming function arguments for 'var' node ~p on line ~p. ~n ", [Name, LineNumber]),
-    [];
+% %% @private Generates the function arguments for the given node and its continuation (in scope).
+-spec generate_function_args(Node, BoundVars) -> [erl_syntax:syntaxTree()] when
+    Node :: af_maxhml(),
+    BoundVars :: [atom()].
+generate_function_args(Node = {?HML_VAR, LineNumber, Name}, _BoundVars) ->
+    % Recursive variable encountered; no further recursion
+    ?TRACE("Searching for function arguments for 'var' node ~p.~n", [Name]),
+    persistent_term:get(generate_function_name(Node), []);
+    % _BoundVars;
+    
+generate_function_args(Node = {?HML_MAX, _, {?HML_VAR, _, Name}, Phi}, BoundVars) ->
+    % `max X` recursive construct, recursively process Phi
+    generate_function_args(Phi, BoundVars);
+
 generate_function_args(
-    OuterNode = {?HML_AND, _, Node = {nec, _, Phi = {_, LineNumber, PatPhi, GuardPhi}, Psi}, RightNode}
+    OuterNode = {?HML_AND, _, 
+        InnerLeftNode = {nec, _, {_, _, PatPhi, GuardPhi}, Psi}, InnerRightNode}, BoundVars
 ) ->
-    % ?TRACE("Generating compound function arguments for 'nec' node from src lines ~p and ~p. ~n " , [LineNumber, PsiLineNumber]),
-    extract_vars_from_guard(GuardPhi, PatPhi);
-generate_function_args({?HML_NEC, _, {_, LineNumber, Pat, Guard}, _}) ->
-    ?TRACE("Generating function arguments for 'nec' node from src line ~p. ~n ", [LineNumber]),
-    extract_vars_from_guard(Guard, Pat);
-generate_function_args({Verdict, _}) when Verdict =:= ?HML_TRU; Verdict =:= ?HML_FLS ->
-    ?TRACE("No function arguments for verdict node ~p. ~n", [Verdict]),
+    % `and` compound node with `nec` on the left
+    % Extract variables from guard and pattern, treat them as bound in this scope
+    
+    RightVars = generate_function_args(InnerRightNode, BoundVars),
+    LeftVars = generate_function_args(InnerLeftNode, BoundVars),
+
+    ?TRACE("Right vars are ~p.~n", [RightVars]),
+    ?TRACE("Left vars are ~p.~n", [LeftVars]),
+    FreeVars = lists:usort(RightVars ++ LeftVars),
+    FreeVars;
+
+generate_function_args(Node = {?HML_NEC, _, {_, _, Pat, Guard}, Phi}, BoundVars) ->
+
+    FreeVarsInPattern = extract_free_vars_from_guard(Guard, Pat),
+    ?TRACE("Free vars are ~p for pattern ~p.~n", [FreeVarsInPattern, Pat]),
+    UpdatedBoundVars = lists:usort(BoundVars ++ extract_bound_vars_from_guard(Node)),
+    ContinuationVars = generate_function_args(Phi, UpdatedBoundVars),  
+    ?TRACE("Continuation vars are ~p.~n", [ContinuationVars]),
+    ?TRACE("Bound vars are ~p.~n", [UpdatedBoundVars]),
+
+    TotalFreeVars = lists:usort(FreeVarsInPattern ++ ContinuationVars),
+    % ?TRACE("Total free vars are ~p.~n", [TotalFreeVars]),
+    FreeVars = lists:usort(TotalFreeVars -- UpdatedBoundVars),  % Exclude bound vars in this scope
+    FreeVars;
+
+generate_function_args({Verdict, _}, _BoundVars) when Verdict =:= ?HML_TRU; Verdict =:= ?HML_FLS ->
+    % Terminating verdict node encountered
+    ?TRACE("No function arguments for terminating verdict node ~p.~n", [Verdict]),
     [].
 
-%%% @private Takes the Monitor state table along with the corrupt event pattern, returning a
-%%% set of the possible states that the monitor can branch into.
--spec get_possible_states(Pat, MonitorStateTable) -> [MonitorStateTable] when
-    Pat :: gen_eval:af_pattern(),
-    MonitorStateTable :: tuple().
-get_possible_states(Pat, MonitorStateTable) ->
-    pass.
 
 %%% @private The logic that handles corrupt event patterns. When the event pattern
 %%% is corrupt, the monitor must branch into a set of mutually-exclusive choices,
@@ -835,15 +892,44 @@ new_ph() ->
     % Generate unique placeholder name.
     lists:flatten(io_lib:format("~s~s~2..0B", [?PH_PRF, Tok, Idx])).
 
-%%% @private Returns the variables from a guard expression. If a variable is found in both the guard and the pattern,
+%%% @private Returns the free variables from a guard expression and funcation definition. If a variable is found in both the guard and the pattern,
 %%% the variable is not included, as it will shadow the variable in the pattern.
--spec extract_vars_from_guard(Guard, Pat) -> string() when
+-spec extract_free_vars_from_guard(Guard, Pat) -> string() when
     Guard :: gen_eval:af_guard(),
     Pat :: gen_eval:af_pattern().
-extract_vars_from_guard(Guard, Pat) ->
-    PatVars = extract_vars(Pat, []),
-    extract_vars_guard(Guard, PatVars, []).
+extract_free_vars_from_guard(Guard, Pat) ->
+    BoundVars = extract_vars(Pat, []),
+    extract_vars_guard(Guard, BoundVars, []).
 
+-spec extract_bound_vars_from_guard(Node) -> string() when
+    Node :: af_maxhml().
+extract_bound_vars_from_guard(Node = {Vrd, LineNumber}) ->
+    [];
+extract_bound_vars_from_guard(Node = {?HML_VAR, _, _Name}) ->
+    [];
+extract_bound_vars_from_guard(Node = {?HML_MAX, _, {?HML_VAR, _, _Name}, Phi}) ->
+    extract_bound_vars_from_guard(Phi);
+extract_bound_vars_from_guard(OuterNode =
+        {?HML_AND, _,
+            InnerLeftNode =
+                {?HML_NEC, _, PhiLeftNode = {_, LineNumberLeft, PatPhiLeft, GuardPhiLeft}, PsiLeft},
+            InnerRightNode =
+                {?HML_NEC, _, PhiRightNode = {_, LineNumberRight, PatPhiRight, GuardPhiRight},
+                    PsiRight}}) ->
+    BoundVarsLeft = extract_vars(PatPhiLeft, []),
+    BoundVarsRight = extract_vars(PatPhiRight, []),
+    BoundVars = BoundVarsLeft ++ BoundVarsRight,
+    BoundVars;
+extract_bound_vars_from_guard(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}) ->
+    BoundVars = extract_vars(Pat, []),
+    BoundVars.
+
+
+%%% @private Returns the variables from a guard expression.
+-spec extract_vars_guard(Guard, PatVars, Acc) -> string() when
+    Guard :: gen_eval:af_guard(),
+    PatVars :: string(),
+    Acc :: string().
 % Base Case
 extract_vars_guard({var, _, Variable}, PatVars, Acc) ->
     case lists:member(Variable, PatVars) of
@@ -865,15 +951,25 @@ extract_vars_guard(_, _, Acc) ->
 -spec extract_vars(Pat, Acc) -> string() when
     Pat :: gen_eval:af_pattern(),
     Acc :: string().
+% Base Case
 extract_vars({var, _, Variable}, Acc) ->
     [Variable | Acc];
+% Recurse through the pattern list
 extract_vars([H | T], Acc) ->
     extract_vars(T, extract_vars(H, Acc));
+% Recurse through the pattern tuple
 extract_vars(Tuple, Acc) when is_tuple(Tuple) ->
     TupleList = tuple_to_list(Tuple),
     extract_vars(TupleList, Acc);
+% Catch-All
 extract_vars(_, Acc) ->
     Acc.
+
+-spec unpack_vars(Vars) -> var when
+    Vars :: [{tree,variable, _, VarName :: string()}].
+unpack_vars(Vars) ->
+    [VarName || {tree,variable, _, VarName} <- Vars].
+
 
 %%% @private Returns the type of the node.
 -spec node_type(Node) -> atom() when

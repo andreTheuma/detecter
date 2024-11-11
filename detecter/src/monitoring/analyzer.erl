@@ -37,7 +37,8 @@
     create_event_buffer/1,
     post_to_event_buffer/2,
     return_event_buffer/1,
-    delete_event_buffer/1
+    delete_event_buffer/1,
+    delete_event_buffer/0
 ]).
 
 %%% Internal callbacks.
@@ -58,6 +59,8 @@
 %% Three types of irrevocable verdicts reached by the analysis.
 -define(VERDICT_YES, yes).
 -define(VERDICT_NO, no).
+-define(VERDICT_INCONCLUSIVE, inconclusive).
+-define(VERDICT_CORRUPT, corrupt).
 -define(VERDICT_END, 'end').
 
 %% Event queue buffer.
@@ -69,7 +72,8 @@
 %%% Type definitions.
 %%% ----------------------------------------------------------------------------
 
--type verdict() :: ?VERDICT_YES | ?VERDICT_NO | ?VERDICT_END.
+-type verdict() ::
+    ?VERDICT_YES | ?VERDICT_NO | ?VERDICT_END | ?VERDICT_INCONCLUSIVE | ?VERDICT_CORRUPT.
 %% Three analysis verdicts.
 
 %% TODO: IMO, should also add monitor() to the below, monitor() | verdict(). Check with dialyzer.
@@ -144,6 +148,7 @@ stop(Pid) ->
 -spec embed(AnlFun :: monitor()) -> true.
 embed(AnlFun) ->
     create_event_buffer(self()),
+    ?TRACE("Embedding monitor function ~p.", [AnlFun]),
     undefined =:= put(?MONITOR, AnlFun).
 
 %% @doc Dispatches the specified abstract event to the monitor for analysis.
@@ -219,6 +224,7 @@ do_monitor(Event, VerdictFun) when is_function(VerdictFun, 1) ->
             % Check whether verdict is reached to enable immediate detection, should
             % this be the case.
             put(?MONITOR, Monitor0 = analyze(Monitor, Event)),
+            % Monitor("Hello, "),
             case is_verdict(Monitor0) of
                 true ->
                     VerdictFun(Monitor0);
@@ -291,6 +297,13 @@ is_verdict(Verdict) when Verdict =:= yes; Verdict =:= no; Verdict =:= 'end' ->
 is_verdict(_) ->
     false.
 
+%% @private Determines whether the specified monitor is in a corrupted state.
+-spec is_corrupt(Verdict :: term()) -> boolean().
+is_corrupt(Verdict) when Verdict =:= corrupt ->
+    true;
+is_corrupt(_) ->
+    false.
+
 %% @private Effects the analysis by applying the monitor function to the
 %% specified event. If a verdict state is reached, the event is silently
 %% discarded.
@@ -308,34 +321,38 @@ analyze(Monitor, Event) ->
             ),
             Monitor;
         false ->
-            % Monitor is not yet at the verdict state and can analyze the event.
-            EventBuffer = return_event_buffer(self()),
+            case is_corrupt(Monitor) of
+                true ->
+                    ok;
+                _ ->
+              
+                    ?TRACE("NOT CORRUPT ~w", [Monitor]),
 
-            {ok, SYSTABLE} = event_table_parser:parse_table(?EVENT_TABLE_FILEPATH),
-            case process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) of
-                PossibleEventList when is_list(PossibleEventList) ->
-                    % Corrupted event detected. Monitor is not able to analyze it.
-                    ?INFO("\033[31mCorrupt event ~w, generated event list ~p\033[0m", [
-                        Event, PossibleEventList
-                    ]),
-                    post_to_event_buffer(self(), PossibleEventList),
-                    ?TRACE("Analyser skipping corrupted event ~w.", [Event]),
-                    Monitor;
-                Event0 when element(1, Event0) =/= analyzed ->
-                    % Monitor is not yet at the verdict state and can analyze the event.
-                    post_to_event_buffer(self(), Event0),
-                    ?TRACE("Analyzing event ~w.", [Event0]),
-                    Monitor(Event0);
-                {analyzed, MonitorForMissingEvent, PreviousGeneratedEvent} ->
-                    post_to_event_buffer(self(), PreviousGeneratedEvent),
-                    analyze(MonitorForMissingEvent, Event)
-                    % MonitorForMissingEvent(Event)
-                    % case is_verdict(MonitorForMissingEvent) of
-                    %     true ->
-                    %         MonitorForMissingEvent;
-                    %     false ->
-                    %         MonitorForMissingEvent(Event)
-                    % end
+                    ?TRACE("Analyzing event ~w.", [Event]),
+                    Monitor(Event)
+
+                % % Monitor is not yet at the verdict state and can analyze the event.
+                % EventBuffer = return_event_buffer(self()),
+
+                % {ok, SYSTABLE} = event_table_parser:parse_table(?EVENT_TABLE_FILEPATH),
+                % case process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) of
+                %     PossibleEventList when is_list(PossibleEventList) ->
+                %         Monitor(Event),
+                %         % Corrupted event detected. Monitor is not able to analyze it.
+                %         ?INFO("\033[31mCorrupt event ~w, generated event list ~p\033[0m", [
+                %             Event, PossibleEventList
+                %         ]),
+                %         post_to_event_buffer(self(), PossibleEventList),
+                %         ?TRACE("Analyser skipping corrupted event ~w.", [Event]),
+                %         Monitor;
+                %     Event0 when element(1, Event0) =/= analyzed ->
+                %         % Monitor is not yet at the verdict state and can analyze the event.
+                %         post_to_event_buffer(self(), Event0),
+                %         ?TRACE("Analyzing event ~w.", [Event0]),
+                %         Monitor(Event0);
+                %     {analyzed, MonitorForMissingEvent, PreviousGeneratedEvent} ->
+                %         post_to_event_buffer(self(), PreviousGeneratedEvent),
+                %         analyze(MonitorForMissingEvent, Event)
             end
     end.
 
@@ -343,21 +360,28 @@ analyze(Monitor, Event) ->
 %%
 %% {@params
 %%   {@name EventBuffer}
-%%   {@desc The last event that has been recorded by the monitor OR a list of events generated inplace of a corrupt event.}
-%   {@name Event}
-%%   {@desc The current event that is to be analyzed by the monitor.}
+%%   {@desc List of events in the event buffer.}
+%%   {@name Event}
+%%   {@desc Current event to analyze.}
 %%   {@name SYSTABLE}
-%%   {@desc The system information table that is used to determine the possible actions of the current event.}
+%%   {@desc System information table.}
+%%   {@name Monitor}
+%%   {@desc Monitor function to apply to the event.}
 %% }
+%%
+%% {@returns Analyzed event or list of events.}
+
 -spec process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) -> Event | [Event] when
-    EventBuffer :: [event:int_event()] | [],
-    Event :: event:int_event() | event:evm_event(),
+    EventBuffer :: [event:int_event()] | [event:evm_event()] | [],
+    Event :: event:corrupt_event() | event:evm_event(),
     SYSTABLE :: event_table_parser:event_table(),
     Monitor :: monitor().
 process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) ->
     case is_list(EventBuffer) of
         true ->
-            MissingEvent = regen_eval:generate_missing_event(EventBuffer, Event, SYSTABLE),
+            MissingEvent = event:to_evm_event(
+                regen_eval:generate_missing_event(EventBuffer, event:to_int_event(Event), SYSTABLE)
+            ),
             ?TRACE("Silently analyzing generated missing event ~p.", [MissingEvent]),
             post_to_event_buffer(self(), MissingEvent),
             MonitorForMissingEvent = analyze(Monitor, MissingEvent),
@@ -367,7 +391,7 @@ process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) ->
             case ?is_corrupt(Event) of
                 true ->
                     regen_eval:generate_current_event_list(
-                        EventBuffer, Event, SYSTABLE
+                        event:to_int_event(EventBuffer), Event, SYSTABLE
                     );
                 false ->
                     Event
@@ -377,10 +401,9 @@ process_event_buffer(EventBuffer, Event, SYSTABLE, Monitor) ->
 %%% ----------------------------------------------------------------------------
 %%% Event buffer management.
 %%% ----------------------------------------------------------------------------
-%%% The event buffer is used to store the latest three events that have
-%%% been recorded by the monfilm 35mmitor. The buffer is used for the generation of missing
-%%% events in the trace.
-
+%%% The event buffer is used to store the last event that was analyzed by the monitor.
+%%% It's usage is instrumental in the detection and generation of corrupt events.
+%%%
 %% @doc Creates the event queue table
 %%
 %% {@returns Table name.}
@@ -390,7 +413,6 @@ init_event_buffer() ->
 
     ets:new(?ETS_EVENT_BUFFER, [set, public, named_table]),
     ?TRACE("Event buffer table created."),
-
     ?ETS_EVENT_BUFFER.
 
 -spec create_event_buffer(Pid) -> true when
@@ -475,5 +497,15 @@ delete_event_buffer(Pid) ->
                     ets:delete(?ETS_EVENT_BUFFER, Pid),
                     ok
             end,
-            ?TRACE("Event buffer ~s deleted.", [Pid])
+            ?TRACE("Event buffer ~p deleted.", [Pid])
+    end.
+
+-spec delete_event_buffer() -> true.
+delete_event_buffer() ->
+    case ets:info(?ETS_EVENT_BUFFER) of
+        undefined ->
+            ok;
+        _ ->
+            ets:delete(?ETS_EVENT_BUFFER),
+            ?TRACE("Event buffer deleted.")
     end.

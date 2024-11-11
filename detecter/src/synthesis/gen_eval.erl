@@ -117,7 +117,7 @@
 % ? no idea what im doing here just ask ... do i make a new monitor... do i not?
 % ? this concernt the Function look up and such
 % -type file_lookup_monitor() :: monitor().
-% -type 
+% -type
 
 %%% Erlang types.
 
@@ -345,15 +345,14 @@ compile(Mod, LexerMod, ParserMod, File, Opts) when is_list(Opts) ->
                     % generates the FLU, which is the function look up for the monitor. The
                     % second pass generates the monitor itself, which references the FLU.
 
-                    FLUMonitor = write_lookup_monitor(create_module(Mod, Ast, ?FLU_SPEC, FLUModule, Opts), FLUFile, Opts),
+                    FLUMonitor = write_lookup_monitor(
+                        create_module(Mod, Ast, ?FLU_SPEC, FLUModule, Opts), FLUFile, Opts
+                    ),
 
-                    % Monitor = write_monitor(create_module(Mod, Ast, ?MFA_SPEC, Module, Opts), File, Opts),
+                    Monitor = write_monitor(create_module(Mod, Ast, ?MFA_SPEC, Module, Opts), File, Opts),
 
-                    % write_monitors([FLUMonitor, Monitor], File, Opts);
-                    % write_monitor(
-                    %     create_module(Mod, Ast, ?FLU_SPEC, FLUModule, Opts), FLUFile, Opts
-                    % );
-                    FLUMonitor;
+                    write_monitors([FLUMonitor, Monitor], File, Opts);
+                    % FLUMonitor;
                 {error, Reason} ->
                     % Error when creating directory.
                     erlang:raise(error, Reason, erlang:get_stacktrace())
@@ -581,32 +580,45 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
                     [
                         erl_syntax:function(
                             erl_syntax:atom(MonFun),
-                            visit_unique_forms(Mod, Ast, Opts)
+                            visit_entry_form(Mod, Ast, Opts)
                         )
                     ]
+                       ++ visit_function_forms(Mod, Ast, Opts)
             )
     end.
 
-%% @private Visits maxHML formula nodes and generates the unique functions required for
-%% each monitor. This is used to generate the FLUT, which is the look up table for the
-%% monitor.
--spec visit_unique_forms(Mod, Form, Opts) -> [erl_syntax:syntaxTree()] when
+%% @private Generates the entry function for the function look up module. This is the first pass which is tied to
+%% `flu_spec/0` function.
+-spec visit_entry_form(Mod, Form, Opts) -> [erl_syntax:syntaxTree()] when
     Mod :: module(),
     Form :: any(),
     Opts :: opts:options().
-visit_unique_forms(_Mod, [], Opts) ->
+visit_entry_form(_Mod, [], Opts) ->
     [erl_syntax:clause([], none, [erl_syntax:atom(undefined)])];
-visit_unique_forms(
+visit_entry_form(
+    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, Phi} | Forms], Opts
+) ->
+    EntryClause = Mod:generate_init_block(Phi, Opts),
+
+    % EntryClause.
+    [erl_syntax:clause([], none, EntryClause)].
+
+%% @private Visits maxHML formula nodes and generates the functions required for
+%% each monitor. This is used to generate the Function Look Up (FLU), which is the look up for the
+%% monitor.
+-spec visit_function_forms(Mod, Form, Opts) -> [erl_syntax:syntaxTree()] when
+    Mod :: module(),
+    Form :: any(),
+    Opts :: opts:options().
+visit_function_forms(_Mod, [], Opts) ->
+    [erl_syntax:clause([], none, [erl_syntax:atom(undefined)])];
+visit_function_forms(
     Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, Phi} | Forms], Opts
 ) ->
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
-
-    FirstPass = Mod:hof_generation(Phi, Opts),
-
-    % [erl_syntax:clause([], none, FirstPass)].
-
-    [erl_syntax:clause([], none, FirstPass)].
+    FunctionsPass = Mod:modularise_hml(Phi, Opts),
+    FunctionsPass.
 
 %% @private Visits maxHML formula nodes and generates the corresponding syntax
 %% tree describing one monitor (i.e. one formula is mapped to one monitor).
@@ -660,13 +672,12 @@ write_monitors([{error, Errors, Warnings} | Monitors], File, Opts) ->
     show_warnings(Warnings),
     write_monitors(Monitors, File, Opts).
 
-%% @private Writes the function look up monitor to the specified file. 
+%% @private Writes the function look up monitor to the specified file.
 -spec write_lookup_monitor(Ast, File, Opts) -> {ok, _, _, _} | {error, errors(), warnings()} when
     Ast :: monitor(),
     File :: file:filename(),
     Opts :: opts:options().
-write_lookup_monitor(Ast, File, Opts)
-->
+write_lookup_monitor(Ast, File, Opts) ->
     % Create base filename, taking into account the output directory specified in
     % the compiler options.
     FileBase = filename:join([opts:out_dir_opt(Opts), filename:basename(File, ?EXT_HML)]),
@@ -689,8 +700,8 @@ write_lookup_monitor(Ast, File, Opts)
         true ->
             % ? Figure out how to do linting with this AST... something wrong with unbound variables
             % ?DEBUG("AST: ~p.", [Ast]),
-            list_erl(IoDev,Ast);
-            % write_erl(IoDev, Ast, File, compile_opts(Opts));
+            list_erl(IoDev, Ast);
+        % write_erl(IoDev, Ast, File, compile_opts(Opts));
         _ ->
             write_beam(IoDev, Ast, File, compile_opts(Opts))
     end,

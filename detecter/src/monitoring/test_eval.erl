@@ -1,28 +1,5 @@
-%%% ----------------------------------------------------------------------------
-%%% @author Duncan Paul Attard
-%%%
-%%% @doc Parsing and compiler module that synthesizes monitor descriptions from
-%%% SHMLnf specifications.
-%%%
-%%% @end
-%%%
-%%% Copyright (c) 2021, Duncan Paul Attard <duncanatt@gmail.com>
-%%%
-%%% This program is free software: you can redistribute it and/or modify it
-%%% under the terms of the GNU General Public License as published by the Free
-%%% Software Foundation, either version 3 of the License, or (at your option)
-%%% any later version.
-%%%
-%%% This program is distributed in the hope that it will be useful, but WITHOUT
-%%% ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-%%% FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
-%%% more details.
-%%%
-%%% You should have received a copy of the GNU General Public License along with
-%%% this program. If not, see <https://www.gnu.org/licenses/>.
-%%% ----------------------------------------------------------------------------
--module(hml_eval).
--author("Duncan Paul Attard").
+-module(test_eval).
+-author("André Theuma").
 
 %%% Includes.
 -include_lib("stdlib/include/assert.hrl").
@@ -438,10 +415,13 @@ visit_forms([{form, _, {mfa, _, Mod, Fun, _, Clause}, Shml} | Forms], Opts) ->
             MfaVar = erl_syntax:variable('_Mfa'),
             Log = create_log("Instrumenting monitor for MFA pattern '~p'.~n", [MfaVar], 'end'),
             Body0 = erl_syntax:tuple([
+                % erl_syntax:atom(ok), erl_syntax:block_expr([Log, erl_syntax:list([visit_shml(Shml, Opts)])])
+
                 erl_syntax:atom(ok), erl_syntax:block_expr([Log, visit_shml(Shml, Opts)])
             ]),
             Match = erl_syntax:match_expr(MfaVar, MfaTuple),
             [erl_syntax:clause([Match], Guard, [Body0]) | visit_forms(Forms, Opts)];
+            % [erl_syntax:clause([Match], Guard, [Log | [Body]]) | visit_forms(Forms, Opts)];
         _ ->
             [erl_syntax:clause([MfaTuple], Guard, [Body]) | visit_forms(Forms, Opts)]
     end.
@@ -473,7 +453,7 @@ visit_shml(_Node = {ff, _}, Opts) ->
         true ->
             Log = create_log("Reached verdict 'no'.~n", [], no),
             Body = erl_syntax:block_expr([Log | [erl_syntax:atom(no)]]),
-            erl_syntax:list([Body]);
+            Body;
         _ ->
             erl_syntax:atom(no)
     end;
@@ -491,7 +471,7 @@ visit_shml(Var = {?HML_VAR, _, Name}, Opts) ->
                 ?MON_VAR
             ),
             Body = erl_syntax:block_expr([Log | [erl_syntax:application(Var, [])]]),
-            erl_syntax:list([Body]);
+            Body;
         _ ->
             erl_syntax:application(Var, [])
     end;
@@ -589,7 +569,8 @@ visit_nec(_Node = {nec, _, Act, Shml}, Opts) ->
     ?TRACE("Visiting 'nec' node ~p.", [_Node]),
     % Create monitor body.
 
-    Body = visit_shml(Shml, Opts),
+    Body = erl_syntax:list([visit_shml(Shml, Opts)]),
+    % Body = visit_shml(Shml, Opts),
 
     % Visit action to obtain clause patterns and guard. In this particular case,
     % the list of patterns will only contain the trace pattern; meanwhile the

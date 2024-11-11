@@ -1305,6 +1305,8 @@ route(PidT, Msg) when element(1, Msg) =:= trace; element(1, Msg) =:= detach ->
     ?TRACE("Tracer ~w routing ~w to next hop ~w.", [self(), Msg, PidT]),
     PidT ! {route, self(), Msg}.
 
+% TODO: ADD ROUTING FOR CORRUPT PAYLOADS.
+
 %% @doc Forwards the specified trace event or command.
 %%
 %% {@params
