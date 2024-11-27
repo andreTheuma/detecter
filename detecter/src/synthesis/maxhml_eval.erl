@@ -36,7 +36,7 @@
 
 %%% Callbacks/Internal.
 -export([visit/2]).
--export([modularise_hml/2,generate_init_block/2]).
+-export([modularise_hml/2,generate_init_block/2,generate_verdicts/0]).
 
 
 %%% Types.
@@ -188,10 +188,6 @@ generate_function(Node = {Vrd, LineNumber}, _Opts) when
     Vrd =:= ?HML_TRU; Vrd =:= ?HML_FLS
 ->
     [];
-generate_function(
-    Node = {?HML_NEC, NecLineNumber, Phi = {act, _, Pat = {init, _, _, _, _}, Guard}, Psi}, _Opts
-) ->
-    generate_function(Psi, _Opts);
 generate_function(Var = {?HML_VAR, _, _Name}, _Opts) ->
 
     ?TRACE("Generating function for 'var' node ~p. ~n ", [_Name]),
@@ -245,12 +241,12 @@ generate_function(
     OuterNode =
         {?HML_AND, _,
             InnerLeftNode =
-                {?HML_NEC, _, PhiLeftNode = {_, LineNumberLeft, PatPhiLeft, GuardPhiLeft}, PsiLeft},
+                {Mod, _, PhiLeftNode = {_, LineNumberLeft, PatPhiLeft, GuardPhiLeft}, PsiLeft},
             InnerRightNode =
-                {?HML_NEC, _, PhiRightNode = {_, LineNumberRight, PatPhiRight, GuardPhiRight},
+                {Mod, _, PhiRightNode = {_, LineNumberRight, PatPhiRight, GuardPhiRight},
                     PsiRight}},
     _Opts
-) ->
+) when Mod =:= ?HML_NEC; Mod =:= ?HML_POS ->
     
     LeftNodeFunctionName = generate_function_name(InnerLeftNode),
     RightNodeFunctionName = generate_function_name(InnerRightNode),
@@ -328,6 +324,8 @@ generate_function(
         [ReceiveClause]
     ),
 
+    ?TRACE("Inner left node~p. ~n", [InnerLeftNode]),
+
     ?TRACE("Generated function ~p. ~n", [CompositeFunctionName]),
     [
         Function
@@ -336,7 +334,6 @@ generate_function(
         ])
     ];
 generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opts) ->
-    
     BoundVars = extract_bound_vars_from_guard(Node),
     FunctionName = generate_function_name(Node),
     ?TRACE("Generating function ~p for 'nec' node from src line ~p. ~n ", [FunctionName, LineNumber]),
@@ -409,6 +406,67 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
 -spec generate_init_block(Node, _Opts) -> erl_syntax:syntaxTree() when
     Node :: af_maxhml(),
     _Opts :: opts:options().
+generate_init_block(OuterNode =
+        {?HML_AND, _,
+            InnerLeftNode =
+                {Mod, _, PhiLeftNode = {_, LineNumberLeft, PatPhiLeft = {init, _, LeftPhiPid2, LeftPhiPid, LeftPhiMFArgs}, GuardPhiLeft}, PsiLeft},
+            InnerRightNode =
+                {Mod, _, PhiRightNode = {_, LineNumberRight, PatPhiRight = {init, _, RightPhiPid2, RightPhiPid, RightPhiMFArgs}, GuardPhiRight},
+                    PsiRight}},
+    _Opts) ->
+
+    LeftNodeFunctionName = generate_function_name(InnerLeftNode),
+    RightNodeFunctionName = generate_function_name(InnerRightNode),
+
+
+    ?TRACE("Generating init block for 'and' node from src lines ~p and ~p. ~n ", [
+        LineNumberLeft, LineNumberRight
+    ]),
+
+    PsiBoundVarsLeft = extract_bound_vars_from_guard(PsiLeft),
+    PsiLeftFunctionArgs = 
+        case persistent_term:get(LeftNodeFunctionName, empty) of
+            empty ->
+                persistent_term:put(LeftNodeFunctionName, generate_function_args(PsiLeft, PsiBoundVarsLeft)),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(LeftNodeFunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(LeftNodeFunctionName)])
+        end,
+
+    PsiBoundVarsRight = extract_bound_vars_from_guard(PsiRight),
+    PsiRightFunctionArgs = 
+        case persistent_term:get(RightNodeFunctionName, empty) of
+            empty ->
+                persistent_term:put(RightNodeFunctionName, generate_function_args(PsiRight, PsiBoundVarsRight)),
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(RightNodeFunctionName)]);
+            _ ->
+                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(RightNodeFunctionName)])
+        end,
+ 
+    LeftNodeClause = erl_syntax:clause(
+        [gen_eval:pat_tuple(PatPhiLeft)],
+        GuardPhiLeft,
+        [
+            erl_syntax:application(
+                erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs
+            )
+        ]
+    ),
+
+    RightNodeClause = erl_syntax:clause(
+        [gen_eval:pat_tuple(PatPhiRight)],
+        GuardPhiRight,
+        [
+            erl_syntax:application(
+                erl_syntax:variable(RightNodeFunctionName), PsiRightFunctionArgs
+            )
+        ]
+    ),
+
+    ReceiveExpr = erl_syntax:receive_expr([LeftNodeClause, RightNodeClause]),
+    ?TRACE("Generated init block for 'and' node. ~n"),
+    [ReceiveExpr];
+
 generate_init_block({?HML_NEC, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}, Phi}, _Opts) ->
     ?TRACE("Generating init block for 'nec' node. ~n"),
 
@@ -427,20 +485,24 @@ generate_init_block({?HML_NEC, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, G
 generate_init_block(_, _) ->
     ?ERROR("Invalid node for init block generation.").
 
+-spec generate_verdicts() -> [erl_syntax:syntaxTree()].
+generate_verdicts() ->
+    lists:flatten([
+        generate_verdict_function({?HML_TRU, 0}, 0),
+        generate_verdict_function({?HML_FLS, 0}, 0),
+        generate_verdict_function({?HML_CORR, 0}, 0)
+    ]).
+
 %%% @public Modularises the functions required for the monitor, coming from `gen_eval` module
 %%%
 -spec modularise_hml(Node, Opts) -> erl_syntax:syntaxTree() when
     Node :: af_maxhml(),
     Opts :: opts:options().
 modularise_hml(Node, Opts) ->
-
+    
     Functions = generate_function(Node, Opts),
 
-    VrdTrue = generate_verdict_function({tt, 0}, 0),
-    VrdFalse = generate_verdict_function({ff, 0}, 0),
-    VrdCorrupt = generate_verdict_function({corr, 0}, 0),
-
-    lists:flatten([VrdTrue, VrdFalse, VrdCorrupt, Functions]).
+    lists:flatten([Functions]).
 
 %%% ----------------------------------------------------------------------------
 %%% Private AST manipulation functions.
@@ -598,11 +660,11 @@ generate_function_args(
 generate_function_args(Node = {?HML_NEC, _, {_, _, Pat, Guard}, Phi}, BoundVars) ->
 
     FreeVarsInPattern = extract_free_vars_from_guard(Guard, Pat),
-    ?TRACE("Free vars are ~p for pattern ~p.~n", [FreeVarsInPattern, Pat]),
+    % ?TRACE("Free vars are ~p for pattern ~p.~n", [FreeVarsInPattern, Pat]),
     UpdatedBoundVars = lists:usort(BoundVars ++ extract_bound_vars_from_guard(Node)),
     ContinuationVars = generate_function_args(Phi, UpdatedBoundVars),  
-    ?TRACE("Continuation vars are ~p.~n", [ContinuationVars]),
-    ?TRACE("Bound vars are ~p.~n", [UpdatedBoundVars]),
+    % ?TRACE("Continuation vars are ~p.~n", [ContinuationVars]),
+    % ?TRACE("Bound vars are ~p.~n", [UpdatedBoundVars]),
 
     TotalFreeVars = lists:usort(FreeVarsInPattern ++ ContinuationVars),
     % ?TRACE("Total free vars are ~p.~n", [TotalFreeVars]),
@@ -611,7 +673,7 @@ generate_function_args(Node = {?HML_NEC, _, {_, _, Pat, Guard}, Phi}, BoundVars)
 
 generate_function_args({Verdict, _}, _BoundVars) when Verdict =:= ?HML_TRU; Verdict =:= ?HML_FLS ->
     % Terminating verdict node encountered
-    ?TRACE("No function arguments for terminating verdict node ~p.~n", [Verdict]),
+    % ?TRACE("No function arguments for terminating verdict node ~p.~n", [Verdict]),
     [].
 
 %%% ----------------------------------------------------------------------------

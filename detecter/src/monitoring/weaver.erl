@@ -28,7 +28,7 @@
 -include("log.hrl").
 
 %%% Public API.
--export([weave/3, weave_file/3]).
+-export([weave/4, weave/3, weave_file/3]).
 
 %%% Callbacks/Internal.
 -export([parse_transform/2]).
@@ -106,6 +106,10 @@
 %%          function calls are to be weaved with tracing and monitor
 %%          instructions.
 %%   }
+%%   {@name FluSpec} (Optional)
+%%   {@desc The function that specifies where to look for the function look ups
+%%          in the AST. Useful for corruption detection.
+%%   }
 %% }
 %%
 %% {@par Object (`.beam') files that require instrumentation need to be compiled
@@ -136,11 +140,28 @@
 %% {@returns A list containing the compilation result of each file in `SrcDir'.
 %%           Warnings are included if present.
 %% }
--spec weave(SrcDir, MfaSpec, Opts) -> [comp_ret()]
+-spec weave(SrcDir, MfaSpec, FluSpec, Opts) -> [comp_ret()]
   when
   SrcDir :: string(),
   MfaSpec :: analyzer:mfa_spec(),
+  FluSpec :: analyzer:flu_spec(),
   Opts :: options().
+weave(SrcDir, MfaSpec, FluSpec, Opts) when is_function(MfaSpec, 1), is_function(FluSpec, 1) ->
+  case filelib:ensure_dir(util:as_dir_name(opts:out_dir_opt(Opts))) of
+    ok ->
+
+      % Recursively obtain list of source files and apply AST transformation.
+      Files = filelib:fold_files(
+        SrcDir, ?EXT_REGEX, true, fun(F, Acc) -> [F | Acc] end, []),
+      Compiled = [write_file(File, MfaSpec, Opts) || File <- Files],
+
+      % Load successfully compiled modules in code path.
+      load_mods(compiled_mods(Compiled)),
+      Compiled;
+
+    {error, Reason} ->
+      erlang:raise(error, Reason, erlang:get_stacktrace())
+  end.
 weave(SrcDir, MfaSpec, Opts) when is_function(MfaSpec, 1) ->
   case filelib:ensure_dir(util:as_dir_name(opts:out_dir_opt(Opts))) of
     ok ->

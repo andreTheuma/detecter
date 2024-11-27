@@ -23,6 +23,8 @@
 %%% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%%-------------------------------------------------------------------
 
+%% [x]max X.([y]([z, x = z]ff ∧ [z, x != z]X))
+
 with
   token_server:loop(_, _)
 check

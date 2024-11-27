@@ -23,9 +23,13 @@
 %%% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%%-------------------------------------------------------------------
 
+%%% [x, x = −1]ff ∧ 〈x, x = 1〉tt
+
 with
   token_server:loop(_, _)
 check
   [{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= -1}]ff
   and
-  <{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
+  [{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}]tt.
+
+  %%%<{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
