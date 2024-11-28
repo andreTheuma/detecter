@@ -537,7 +537,8 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
                             visit_entry_form(Mod, Ast, Opts)
                         )
                     ]
-                       ++ visit_function_forms(Mod, Ast, Opts)
+                       ++ visit_function_forms(Mod, Ast, Opts) 
+                      ++ Mod:generate_verdicts()
             )
     end.
 
@@ -562,14 +563,24 @@ visit_entry_form(
 %% monitor.
 -spec visit_function_forms(Mod, Form, Opts) -> [erl_syntax:syntaxTree()] when
     Mod :: module(),
-    Form :: any(),
+    Form :: [{form, _, {sel, _, MFArgs, Guard}, Phi} | Form],
+
+    Guard :: abstract_expr(),
+    Phi :: abstract_expr(),
+
+    MFArgs :: {mfargs, _, M, F, Args},
+    M :: module(),
+    F :: fun_name(),
+    Args :: [abstract_expr()],
     Opts :: opts:options().
+
+
 visit_function_forms(_Mod, [], Opts) ->
     [erl_syntax:clause([], none, [erl_syntax:atom(undefined)])];
 visit_function_forms(
-    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, 
+    Mod, [{form, _, {sel, _, {mfargs, _, _, _, _}, _}, 
       Phi= {var, _, _Name} } 
-    | Forms], Opts
+    | _], Opts
 ) ->
     % PROB FOR NOTHING
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
@@ -583,34 +594,42 @@ visit_function_forms(
 ) ->
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
-    FunctionsPass = Mod:modularise_hml(ContPhi, Opts),
-    Mod:generate_verdicts() ++ FunctionsPass;
+    Mod:modularise_hml(ContPhi, Opts);
 visit_function_forms(
-    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, 
-      Phi = {'and', _,
+    Mod, [{form, _, {sel, _, {mfargs, _, _, _, _}, _}, 
+     {'and', _,
             InnerLeftNode =
-                {NodeType, _, PhiLeftNode = {_, LineNumberLeft, PatPhiLeft, GuardPhiLeft}, PsiLeft},
+                {NodeType, _, {_, _, _, _}, _},
             InnerRightNode =
-                {NodeType, _, PhiRightNode = {_, LineNumberRight, PatPhiRight, GuardPhiRight},
-                    PsiRight}}
-    } | Forms], Opts
+                {NodeType, _, {_, _, _, _},
+                    _}}
+    } | _], Opts
 ) when NodeType =:= nec; NodeType =:= pos ->
 
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
-    ?DEBUG("InnerRght: ~p.", [InnerRightNode]),
+
     FunctionsPassLeft = Mod:modularise_hml(InnerLeftNode, Opts),
     FunctionsPassRight = Mod:modularise_hml(InnerRightNode, Opts),
-    Mod:generate_verdicts() ++ FunctionsPassLeft ++ FunctionsPassRight;
+    FunctionsPassLeft ++ FunctionsPassRight;
+
 visit_function_forms(
-    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, 
-      Phi = {nec, LineNumber, {act, _, Pat, Guard}, ContPhi}
+    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, OuterGuard}, 
+      {nec, _, {act, _, _, InnerGuard}, ContPhi}
     } | Forms], Opts
 ) ->
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
-    FunctionsPass = Mod:modularise_hml(ContPhi, Opts),
-    Mod:generate_verdicts() ++ FunctionsPass.
+    Mod:modularise_hml(ContPhi, Opts).
+
+%   visit_function_forms(
+%     Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, 
+%       {nec, _, Event, ContPhi}
+%     } | Forms], Opts
+% ) -> 
+%   % ?TRACE("Phi: ~p.", [Event]).
+% Mod:modularise_hml(ContPhi, Opts).
+
 
 %% @private Visits maxHML formula nodes and generates the corresponding syntax
 %% tree describing one monitor (i.e. one formula is mapped to one monitor).
