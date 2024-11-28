@@ -474,7 +474,7 @@ generate_init_block({?HML_NEC, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, G
     NextFunctionArgs = generate_function_args(Phi, []),
 
     persistent_term:put(NextFunctionName, NextFunctionArgs),
-    AnonFunEntry = erl_syntax:clause([gen_eval:pat_tuple(Pat)], none, [
+    AnonFunEntry = erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [
         erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
     ]),
 
