@@ -28,8 +28,12 @@
 with
   token_server:loop(_, _)
 check
-  [{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= -1}]ff
-  and
   <{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
 
-  %%%<{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
+%%%<{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
+%%%  with
+ %%% token_server:loop(_, _)
+%%%check
+%%%  [{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= -1}]ff
+%%%  and
+%%%  <{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.

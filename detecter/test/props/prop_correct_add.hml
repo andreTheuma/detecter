@@ -3,7 +3,7 @@
 %%% @copyright (C) 2019 Duncan Paul Attard
 %%% @version 0.9
 %%%
-%%% The server starts with its correct identifier token of 1.
+%%% A request for adding two numbers always returns their sum.
 %%%
 %%% Created: 16. Jan 2022
 %%%
@@ -23,13 +23,16 @@
 %%% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%%-------------------------------------------------------------------
 
-%%% [x, x = −1]ff ∧ 〈x, x = 1〉tt
-
 with
-  token_server:loop(_, _)
+  calc_server_bug:loop(_)
 check
-  [{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= -1}]ff
-  and
-  <{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
-
-  %%%<{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
+  [{_ <- _, calc_server_bug:loop(_)}]
+  max X.(
+    [{_ ? {_, {add, A, B}}}](
+      [{_:_ ! {ok, Res} when Res =/= A + B}]ff
+      and
+      [{_:_ ! {ok, Res} when Res =:= A + B}]X
+    )
+    and
+    [{_ ? {_, _}}][{_:_ ! {Code, Res} when Code =:= ok orelse Code =:= bye}]X
+  ).

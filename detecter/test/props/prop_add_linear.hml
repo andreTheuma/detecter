@@ -1,0 +1,9 @@
+with
+    calc_server:loop(_)
+check
+    [{_ <- _, calc_server:loop(_)}]
+    [{_ ? {_, {add, A, B}}}](
+        [{_:_ ! {ok, Res} when Res =:= A + B }]tt
+        and
+        [{_:_ ! {ok, Res} when Res =/= A + B }]ff
+    ).

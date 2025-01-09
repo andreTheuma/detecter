@@ -402,16 +402,16 @@ parse_file(LexerMod, ParserMod, File) when is_list(File) ->
 %%            `{trace, Pid, spawn, Pid2, {M, F, Args}}'
 %%     }
 %%     {@item Initialized `{init, _, Pid2, Pid, MFArgs}' is translated to
-%%            `{trace, Pid, spawned, Pid2, {M, F, Args}}'
+%%            `{{trace, Pid, spawned, Pid2, {M, F, Args}},From}'
 %%     }
 %%     {@item Exit pattern `{exit, _, Pid, Var}' is translated to
 %%            `{trace, Pid, exit, Reason}'
 %%     }
 %%     {@item Send pattern `{send, _, Pid, To, Var}' is translated to
-%%            `{trace, Pid, send, Msg, To}'
+%%            `{{trace, Pid, send, Msg, To},From}'
 %%     }
 %%     {@item Receive pattern `{recv, _, Pid, Var}' is translated to
-%%            `{trace, Pid, 'receive', Msg}'
+%%            `{{trace, Pid, 'receive', Msg},From}'
 %%     }
 %%   }
 %% }
@@ -421,18 +421,22 @@ pat_tuple({fork, _, Pid, Pid2, MFArgs}) ->
     erl_syntax:atom(trace), Pid, erl_syntax:atom(spawn), Pid2,
     mfargs_tuple(MFArgs)]);
 pat_tuple({init, _, Pid2, Pid, MFArgs}) ->
-  erl_syntax:tuple([
+  erl_syntax:tuple([erl_syntax:tuple([
     erl_syntax:atom(trace), Pid2, erl_syntax:atom(spawned), Pid,
-    mfargs_tuple(MFArgs)]);
+    mfargs_tuple(MFArgs)]), erl_syntax:variable("From")]);
 pat_tuple({exit, _, Pid, Var}) ->
   erl_syntax:tuple([
     erl_syntax:atom(trace), Pid, erl_syntax:atom(exit), Var]);
 pat_tuple({send, _, Pid, To, Var}) ->
-  erl_syntax:tuple([
-    erl_syntax:atom(trace), Pid, erl_syntax:atom(send), Var, To]);
+  erl_syntax:tuple([erl_syntax:tuple([
+    erl_syntax:atom(trace), Pid, erl_syntax:atom(send), Var, To]),erl_syntax:variable("From")]);
 pat_tuple({recv, _, Pid, Var}) ->
-  erl_syntax:tuple([
-    erl_syntax:atom(trace), Pid, erl_syntax:atom('receive'), Var]).
+  erl_syntax:tuple([erl_syntax:tuple([
+    erl_syntax:atom(trace), Pid, erl_syntax:atom('receive'), Var]),erl_syntax:variable("From")]);
+pat_tuple({missing_event})->
+    erl_syntax:tuple([
+    erl_syntax:atom(missing_event)]).
+
 
 -spec mfargs_tuple(MFArgs :: af_mfargs()) -> erl_syntax:syntaxTree().
 mfargs_tuple({?MFARGS, _, M, F, Args}) ->
@@ -536,9 +540,11 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
                             erl_syntax:atom(MonFun),
                             visit_entry_form(Mod, Ast, Opts)
                         )
+                        % visit_entry_form(Mod,Ast,Opts)
                     ]
                        ++ visit_function_forms(Mod, Ast, Opts) 
                       ++ Mod:generate_verdicts()
+                    ++ Mod:generate_sys_info(Opts)
             )
     end.
 
@@ -559,8 +565,8 @@ visit_entry_form(
     [erl_syntax:clause([], none, EntryClause)].
 
 %% @private Visits maxHML formula nodes and generates the functions required for
-%% each monitor. This is used to generate the Function Look Up (FLU), which is the look up for the
-%% monitor.
+%% each monitor, skipping the entry clause. This is used to generate the Function Look Up 
+%% (FLU), which synthesises constructs to functions.
 -spec visit_function_forms(Mod, Form, Opts) -> [erl_syntax:syntaxTree()] when
     Mod :: module(),
     Form :: [{form, _, {sel, _, MFArgs, Guard}, Phi} | Form],
@@ -573,7 +579,6 @@ visit_entry_form(
     F :: fun_name(),
     Args :: [abstract_expr()],
     Opts :: opts:options().
-
 
 visit_function_forms(_Mod, [], Opts) ->
     [erl_syntax:clause([], none, [erl_syntax:atom(undefined)])];
@@ -599,19 +604,32 @@ visit_function_forms(
     Mod, [{form, _, {sel, _, {mfargs, _, _, _, _}, _}, 
      {'and', _,
             InnerLeftNode =
-                {NodeType, _, {_, _, _, _}, _},
+                {NodeTypeLeft, _, {_, _, _, _}, InnerLeftPhi},
             InnerRightNode =
-                {NodeType, _, {_, _, _, _},
-                    _}}
+                {NodeTypeRight, _, {_, _, _, _},
+                    InnerRightPhi}}
     } | _], Opts
-) when NodeType =:= nec; NodeType =:= pos ->
+) when NodeTypeLeft =:= nec; NodeTypeLeft =:= pos; NodeTypeRight =:=nec; NodeTypeRight=:=pos ->
 
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
 
-    FunctionsPassLeft = Mod:modularise_hml(InnerLeftNode, Opts),
-    FunctionsPassRight = Mod:modularise_hml(InnerRightNode, Opts),
+    % ?TRACE("InnerLeftPHI: ~p.", [InnerLeftPhi]),
+    % ?TRACE("InnerRightPHI: ~p.", [InnerRightPhi]),
+
+    % FunctionsPassLeft = Mod:modularise_hml(InnerLeftNode, Opts),
+    % FunctionsPassRight = Mod:modularise_hml(InnerRightNode, Opts),
+
+    FunctionsPassLeft = Mod:modularise_hml(InnerLeftPhi, Opts),
+    FunctionsPassRight = Mod:modularise_hml(InnerRightPhi, Opts),
     FunctionsPassLeft ++ FunctionsPassRight;
+
+visit_function_forms(
+    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, OuterGuard}, 
+      {pos, _, {act, _, _, InnerGuard}, ContPhi}
+    } | Forms], Opts
+) ->
+    Mod:modularise_hml(ContPhi, Opts);
 
 visit_function_forms(
     Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, OuterGuard}, 
@@ -621,15 +639,6 @@ visit_function_forms(
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
     Mod:modularise_hml(ContPhi, Opts).
-
-%   visit_function_forms(
-%     Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, 
-%       {nec, _, Event, ContPhi}
-%     } | Forms], Opts
-% ) -> 
-%   % ?TRACE("Phi: ~p.", [Event]).
-% Mod:modularise_hml(ContPhi, Opts).
-
 
 %% @private Visits maxHML formula nodes and generates the corresponding syntax
 %% tree describing one monitor (i.e. one formula is mapped to one monitor).
@@ -654,11 +663,9 @@ visit_forms(_Mod, [], Opts) ->
       [erl_syntax:clause([erl_syntax:underscore()], none, [erl_syntax:atom(undefined)])]
   end;
 visit_forms(Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, Phi} | Forms], Opts) ->
-  ?DEBUG("Form: ~p.", [Form]),
-  ?DEBUG("Guard: ~p.", [Guard]),
-  ?DEBUG("MFArgs: ~p.", [MFArgs]),
-
-
+  % ?DEBUG("Form: ~p.", [Form]),
+  % ?DEBUG("Guard: ~p.", [Guard]),
+  % ?DEBUG("MFArgs: ~p.", [MFArgs]),
 
   Body = erl_syntax:tuple([erl_syntax:atom(ok), Mod:visit(Phi, Opts)]),
 

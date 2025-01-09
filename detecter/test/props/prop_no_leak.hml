@@ -3,7 +3,7 @@
 %%% @copyright (C) 2019 Duncan Paul Attard
 %%% @version 0.9
 %%%
-%%% The server starts with its correct identifier token of 1.
+%%% The private server token is not leaked.
 %%%
 %%% Created: 16. Jan 2022
 %%%
@@ -23,13 +23,16 @@
 %%% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%%-------------------------------------------------------------------
 
-%%% [x, x = −1]ff ∧ 〈x, x = 1〉tt
+%% [x]max X.([y]([z, x = z]ff ∧ [z, x != z]X))
 
 with
   token_server:loop(_, _)
 check
-  [{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= -1}]ff
-  and
-  <{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
-
-  %%%<{_ <- _, token_server:loop(OwnTok, _) when OwnTok =:= 1}>tt.
+  [{_ <- _, token_server:loop(OwnTok, _)}]
+  max X.(
+    [{_ ? {_, _}}](
+      [{_:_ ! Tok when OwnTok =:= Tok}]ff
+      and
+      [{_:_ ! Tok when OwnTok =/= Tok}]X
+    )
+  ).

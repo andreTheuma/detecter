@@ -1,0 +1,13 @@
+%% max X.([y] ( [a][a]ff ∧ [A]X) )
+
+with
+  token_server:loop(_, _)
+check
+  [{_ <- _, token_server:loop(OwnTok, _)}]
+  max X.(
+    [{_ ? {_, _}}](
+        [{_:_ ! Tok when Tok =:= a}]ff
+        and
+        [{_:_ ! Tok}]X
+    )
+  ).
