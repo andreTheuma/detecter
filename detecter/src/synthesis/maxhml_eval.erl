@@ -36,7 +36,7 @@
 
 %%% Callbacks/Internal.
 -export([visit/2]).
--export([modularise_hml/2,generate_init_block/2,generate_verdicts/0]).
+-export([modularise_hml/2,generate_init_block/2,generate_verdicts/0, generate_sys_info/1]).
 
 
 %%% Types.
@@ -177,11 +177,6 @@ generate_verdict_function({Vrd, _}, _Opts) ->
                 erl_syntax:atom(generate_function_name({Vrd, 0})),
                 [erl_syntax:clause([FromVar], none, [erl_syntax:infix_expr(FromVar,erl_syntax:operator("!"),erl_syntax:atom(?MON_REJ))])]
             )
-        % ?HML_CORR ->
-        %     erl_syntax:function(
-        %         erl_syntax:atom("corrupt"),
-        %         [erl_syntax:clause([], none, [erl_syntax:atom(?MON_CORR)])]
-        %     )
     end.
 
 -spec generate_function(Node, Opts) -> erl_syntax:syntaxTree() when
@@ -508,7 +503,6 @@ generate_verdicts() ->
     lists:flatten([
         generate_verdict_function({?HML_TRU, 0}, 0),
         generate_verdict_function({?HML_FLS, 0}, 0)
-        % generate_verdict_function({?HML_CORR, 0}, 0)
     ]).
 
 %%% @public Modularises the functions required for the monitor, coming from `gen_eval` module
@@ -519,7 +513,6 @@ generate_verdicts() ->
 modularise_hml(Node, Opts) ->
     
     Functions = generate_function(Node, Opts),
-
     lists:flatten([Functions]).
 
 %%% ----------------------------------------------------------------------------
@@ -693,10 +686,141 @@ generate_function_args({Verdict, _}, _BoundVars) when Verdict =:= ?HML_TRU; Verd
 %%% Automaton Guided Monitoring functions
 %%% ----------------------------------------------------------------------------
 
+% Refer to module sys_info_parser
+
 generate_sys_info(Opts) ->
-    opts:
+    SourceFile = opts:monitor_table_opt(Opts),
+    SysInfo = sys_info_parser:parse_file(SourceFile),
+    Map = generate_transition(SysInfo),
+    [erl_syntax:function(
+        erl_syntax:atom(init_transitions),
+        [
+            erl_syntax:clause(
+                [],
+                [],
+                [Map]
+            )
+        ]
+    )].
 
+generate_transition(TransitionList)->
+    % Create AST for the key: {Source, Destination}
+    Fields = lists:map(fun sys_info_to_map/1, TransitionList),
+    erl_syntax:map_expr(Fields).
+    % Map.
 
+sys_info_to_map({Source, EventTuple, Destination}) ->    
+    % Key Map
+    KeyAST = erl_syntax:tuple([
+        erl_syntax:atom(Source),
+        erl_syntax:atom(Destination)
+    ]),
+    % Fun Map
+    io:format("EventTuple is: ~p~n", [EventTuple]),
+    ValueAST = parse_event(EventTuple),
+    erl_syntax:map_field_assoc(KeyAST, ValueAST).
+    
+
+parse_event({EventType, EventPayload}) when EventType =:= is_integer ->
+
+    EventBody = erl_syntax:infix_expr(
+        erl_syntax:variable("Event"),
+        erl_syntax:operator('=:='),
+        erl_syntax:integer(EventPayload)
+    ),
+
+    erl_syntax:fun_expr(
+        [erl_syntax:clause(
+            [erl_syntax:variable("Event")],[],[EventBody]
+            )]
+    );
+
+parse_event({EventType, EventPayload}) when EventType =:= atom ->
+        EventBody = erl_syntax:infix_expr(
+        erl_syntax:variable("Event"),
+        erl_syntax:operator('=:='),
+        erl_syntax:atom(EventPayload)
+    ),
+
+    erl_syntax:fun_expr(
+        [erl_syntax:clause(
+            [erl_syntax:variable("Event")],[],[EventBody]
+            )]
+    );
+
+parse_event({{EventType, EventPayload}, AdditionalGuards}) when EventType =:= 'fun' ->
+    
+    EventVar = erl_syntax:variable("Event"),
+    
+    IsIntegerGuard = erl_syntax:application(
+        erl_syntax:atom(is_integer),
+        [EventVar]
+    ),
+
+    IsRealGuard = erl_syntax:application(
+        erl_syntax:atom(is_number),
+        [EventVar]
+    ),
+
+    EventBody = 
+        case EventPayload of 
+            null -> erl_syntax:atom(null);
+            is_natural_integer -> 
+                
+                NaturalIntegerGuard = erl_syntax:infix_expr(
+                    EventVar,
+                    erl_syntax:operator(">"),
+                    erl_syntax:integer(0)
+                ),
+
+                CombinedGuard = erl_syntax:infix_expr(
+                    IsIntegerGuard,
+                    erl_syntax:operator("andalso"),
+                    NaturalIntegerGuard
+                ),
+
+                CombinedGuard;
+
+            is_any_integer -> IsIntegerGuard;
+            
+            is_real_number -> IsRealGuard
+        end,
+
+        case AdditionalGuards of 
+            [Operator | {GuardPayloadType, GuardPayload} ] ->
+                io:format("Operator Guards ~p~n", [Operator]),
+                io:format("Payload Guards ~p~n", [GuardPayload]),
+
+                % !!!!!here
+                AdditionalGuardsBody = case Operator of
+                    setminus ->
+                         erl_syntax:infix_expr(
+                            EventVar,
+                            erl_syntax:operator("=/="),
+                            case GuardPayloadType of 
+                                is_integer -> erl_syntax:integer(GuardPayload);
+                                is_atom -> erl_syntax:atom(GuardPayload)
+                            end
+                        )
+                end,
+                erl_syntax:fun_expr(
+                    [erl_syntax:clause(
+                    [EventVar],[],[
+                        erl_syntax:infix_expr(
+                        EventBody,
+                        erl_syntax:operator("andalso"),
+                        AdditionalGuardsBody
+                        )]
+                    )]
+                );
+            [] ->    
+                erl_syntax:fun_expr(
+                    [erl_syntax:clause(
+                    [EventVar],[],[EventBody]
+                    )]
+                )
+        end.
+    
 %%% ----------------------------------------------------------------------------
 %%% Private monitor environment creation functions.
 %%% ----------------------------------------------------------------------------

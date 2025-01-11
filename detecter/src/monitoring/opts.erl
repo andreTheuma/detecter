@@ -29,7 +29,7 @@
 
 %%% Public API.
 -export([file_ext/1]).
--export([out_dir_opt/1, include_opt/1, erl_opt/1, verbose_opt/1]).
+-export([out_dir_opt/1, include_opt/1, erl_opt/1, verbose_opt/1,monitor_table_opt/1]).
 
 %%% Types.
 -export_type([option/0, options/0]).
@@ -52,6 +52,8 @@
 -define(OPT_ERL, erl).
 -define(OPT_VERBOSE, v).
 -define(OPT_FILTER, filter).
+
+-define(OPT_MONITOR_TABLE, mtab). % Monitor table option.
 
 %% Default Erlang compiler options.
 -define(COMPILER_OPTS, [nowarn_shadow_vars, return]).
@@ -104,3 +106,10 @@ erl_opt(Opts) ->
 -spec verbose_opt(Opts :: options()) -> Flag :: boolean().
 verbose_opt(Opts) ->
   proplists:get_value(?OPT_VERBOSE, Opts, false).
+
+%% @doc Returns the compiler switch that determines whether the resulting monitor 
+%% includes the monitor table specification, used to generate the internal monitor table
+%% for corrupted event recovery. Defaults to 'false'.
+-spec monitor_table_opt(Opts :: options()) -> Dir :: string().
+monitor_table_opt(Opts) ->
+  proplists:get_value(?OPT_MONITOR_TABLE, Opts, ".").
