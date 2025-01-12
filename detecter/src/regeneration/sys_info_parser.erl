@@ -1,3 +1,11 @@
+%%% ----------------------------------------------------------------------------
+%%% @author André Theuma
+%%%
+%%% @doc Module to parse prior system information from a ".spec" file
+%%%
+%%% @end
+%%% ----------------------------------------------------------------------------
+
 -module(sys_info_parser).
 -author("André Theuma").
 
@@ -17,13 +25,13 @@ parse_transition_line(Line) ->
         parse_atom(Destination)
     }.
 
-parse_atom(Text) ->
-    TextTrimmed = string:trim(Text),
-    try list_to_atom(binary_to_list(TextTrimmed)) of
+parse_atom(StateText) ->
+    State = string:trim(StateText),
+    try list_to_atom(binary_to_list(State)) of
         Atom -> 
                 Atom
     catch
-        _:_ -> TextTrimmed
+        _:_ -> State
     end.
 
 parse_event(EventText) ->
@@ -55,7 +63,7 @@ parse_event_and_guard(Event)->
 %%% This is used to parse complex events, such as numerical ranges, and other conditions
 %%% 
 %%% ex: event N in {s2, N, s1};
-%%%     event Z \ 0  {s3, Z \ 0, s3};
+%%%     event Z \ 0 in {s3, Z \ 0, s3};
 %%% 
 %%% 
 identify_event_condition(Event) ->
@@ -82,9 +90,9 @@ parse_guard([Operator | [Payload]]) ->
 
 parse_operator(Guard) ->
     case binary_to_list(Guard) of
+        %TODO: ADD MORE CASES... union, disjunction....
         "\\" ->
             {ok, setminus}
-
     end.
 
 

@@ -544,7 +544,7 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
                     ]
                        ++ visit_function_forms(Mod, Ast, Opts) 
                       ++ Mod:generate_verdicts()
-                    ++ Mod:generate_sys_info(Opts)
+                    ++ Mod:generate_sys_info_function(Opts)
             )
     end.
 
