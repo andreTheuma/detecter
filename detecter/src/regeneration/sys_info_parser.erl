@@ -80,6 +80,7 @@ identify_event_condition(Event) ->
             {error, unsupported_condition}
     end.
 
+% ! Only supports 1 guard at the moment...
 parse_guard([]) -> [];
 parse_guard([Operator | [Payload]]) ->
     case parse_operator(Operator) of

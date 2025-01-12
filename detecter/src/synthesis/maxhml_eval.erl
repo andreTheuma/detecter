@@ -37,7 +37,7 @@
 %%% Callbacks/Internal.
 -export([visit/2]).
 -export([modularise_hml/2,generate_init_block/2,generate_verdicts/0]).
--export([generate_sys_info_function/1,agm_generation/0]).
+-export([generate_sys_info_function/1,generate_all_states/0,agm_generation/0]).
 
 
 %%% Types.
@@ -684,11 +684,12 @@ generate_function_args({Verdict, _}, _BoundVars) when Verdict =:= ?HML_TRU; Verd
     ["From"].
 
 %%% ----------------------------------------------------------------------------
-%%% System Info function generation (init_transitions/0)
+%%% System Info functions
 %%% 
 %%% refer to module sys_info_parser
 %%% ----------------------------------------------------------------------------
 
+% init_transitions/0
 generate_sys_info_function(Opts) ->
     SourceFile = opts:monitor_table_opt(Opts),
     SysInfo = sys_info_parser:parse_file(SourceFile),
@@ -829,20 +830,68 @@ generate_sys_info_guard(EventPayload, AdditionalGuards) ->
             [] -> MainGuard
         end.
 
+% get_system_states/1
+generate_all_states() ->
+    % vars
+    SysInfoVar = erl_syntax:variable('StateTransitionTable'),
+    SrcVar = erl_syntax:variable('Src'),
+    ConditionVar = erl_syntax:variable('_Condition'),
+    DstVar = erl_syntax:variable('Dst'),
+    AccVar = erl_syntax:variable('Acc'),
+    StatesVar = erl_syntax:variable('States'),
+    UniqueStatesVar = erl_syntax:variable('UniqueStates'),
+
+    TransitionsAssignment = erl_syntax:infix_expr(
+        SysInfoVar,
+        erl_syntax:operator('='),
+        erl_syntax:application(erl_syntax:atom(init_transitions),[])
+        ),
+
+    FoldBody = erl_syntax:fun_expr([
+        erl_syntax:clause(
+              [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),ConditionVar]),AccVar],
+            [],
+            [erl_syntax:cons(SrcVar, erl_syntax:list([DstVar,AccVar]))])
+    ]),
+
+    FoldExpression = erl_syntax:application(
+        erl_syntax:atom(lists),
+        erl_syntax:atom(foldl),
+        [FoldBody,erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[SysInfoVar])]),
+
+    StateAssignment = erl_syntax:infix_expr(StatesVar,erl_syntax:operator('='),FoldExpression),
+
+    FunctionReturn = erl_syntax:application(
+        erl_syntax:atom(lists),
+        erl_syntax:atom(usort),
+        [erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(flatten),[StatesVar])]),
+
+     [erl_syntax:function(
+        erl_syntax:atom(get_system_states),
+        [
+            erl_syntax:clause(
+                [],
+                [],
+                [TransitionsAssignment,StateAssignment,FunctionReturn]
+            )
+        ]
+    )].
+
 
 %%% ----------------------------------------------------------------------------
 %%% Automaton Guided Monitoring functions.
 %%% ----------------------------------------------------------------------------
 
 agm_generation()->
-    generate_reachable_states_function().
+    lists:flatten([generate_reachable_states_function(), generate_preceeding_states_from_state_function()]).
 
+% reachable_states/2
 generate_reachable_states_function()->
     
     % vars
     ParamState = erl_syntax:variable('State'),
     ParamEvent = erl_syntax:variable('Event'),
-    TransitionsVar = erl_syntax:variable('Transitions'),
+    TransitionsVar = erl_syntax:variable('StateTransitionTable'),
     SrcVar = erl_syntax:variable('Src'),
     DstVar = erl_syntax:variable('Dst'),
     ConditionVar = erl_syntax:variable('Condition'),
@@ -901,7 +950,58 @@ generate_reachable_states_function()->
         ]
     )].
 
+% preceeding_states/1
+generate_preceeding_states_from_state_function() ->
+   % vars
+    ParamState = erl_syntax:variable('State'),
+    % ParamEvent = erl_syntax:variable('Event'),
+    TransitionsVar = erl_syntax:variable('StateTransitionTable'),
+    SrcVar = erl_syntax:variable('Src'),
+    DstVar = erl_syntax:variable('Dst'),
+    ConditionVar = erl_syntax:variable('_Condition'),
+    AccVar = erl_syntax:variable('Acc'),
 
+    TransitionsAssignment = erl_syntax:infix_expr(
+        TransitionsVar,
+        erl_syntax:operator('='),
+        erl_syntax:application(erl_syntax:atom(init_transitions),[])
+        ),
+    
+
+    % For If Expression 
+    IfClauseMatch = 
+        erl_syntax:clause([],
+        [erl_syntax:infix_expr(DstVar,erl_syntax:operator('=:='),ParamState)],
+        [erl_syntax:application(erl_syntax:atom(lists), erl_syntax:atom(usort), [erl_syntax:cons(SrcVar, AccVar)])]),
+    
+    IfClauseNoMatch = 
+        erl_syntax:clause([],
+        [erl_syntax:atom(true)],
+        [AccVar]),
+
+    IfExpression = erl_syntax:if_expr([IfClauseMatch,IfClauseNoMatch]),
+
+    FoldBody = erl_syntax:fun_expr([
+        erl_syntax:clause(
+            [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),ConditionVar]),AccVar],
+            [],
+            [IfExpression])
+    ]),
+
+    FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
+                            [FoldBody, erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
+                            ),
+    
+    [erl_syntax:function(
+        erl_syntax:atom(preceeding_states_from_state),
+        [
+            erl_syntax:clause(
+                [ParamState],
+                [],
+                [TransitionsAssignment,FoldExpression]
+            )
+        ]
+    )].
 
 %%% ----------------------------------------------------------------------------
 %%% Private monitor environment creation functions.
