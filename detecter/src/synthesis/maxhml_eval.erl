@@ -509,12 +509,13 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}
     AnonFunEntry = 
         case Mod of 
             ?HML_NEC ->
+                % ! There might be an issue with updating state here ....
                 [erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [
-                erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
+                erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs])),erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
                 ])];
             ?HML_POS ->
                 [erl_syntax:clause([gen_eval:pat_tuple(Pat)], (Guard), [
-                erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
+                erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs])),erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
                 ]),
                 erl_syntax:clause([gen_eval:pat_tuple(Pat)], invert_operator(Guard), [
                 erl_syntax:application(erl_syntax:atom(rejection), lists:flatten([erl_syntax:variable("From")]))
