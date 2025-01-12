@@ -546,6 +546,7 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
                       ++ Mod:generate_verdicts()
                     ++ Mod:generate_sys_info_function(Opts)
                   ++ Mod:generate_all_states()
+                ++ Mod:generate_state_management()
                   ++ Mod:agm_generation()
             )
     end.

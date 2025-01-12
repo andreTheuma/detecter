@@ -10,7 +10,7 @@ parse_transition_file_test() ->
     % Test the parsing of the transition file.
     % Simulate the file content
     FileContent = [
-        "{START, NULL, s0};\n",
+        "{start, NULL, s0};\n",
         "{s0, -1, s3};\n",
         "{s0, 1, s1};\n",
         "{s1, 0, s2};\n",

@@ -37,6 +37,7 @@
 %%% Callbacks/Internal.
 -export([visit/2]).
 -export([modularise_hml/2,generate_init_block/2,generate_verdicts/0]).
+-export([generate_state_management/0]).
 -export([generate_sys_info_function/1,generate_all_states/0,agm_generation/0]).
 
 
@@ -295,21 +296,41 @@ generate_function(
     LeftNodeClause = erl_syntax:clause(
         [gen_eval:pat_tuple(PatPhiLeft)],
         GuardPhiLeft,
-        [
-            erl_syntax:application(
-                erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs
-            )
-        ]
+
+        case ?IS_TERMINATING_HML(PsiLeft) of
+            true ->
+                [
+                    erl_syntax:application(
+                        erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs
+                    )
+                ];
+            _->
+                [
+                    erl_syntax:application(erl_syntax:atom(update_current_state), PsiLeftFunctionArgs),    
+                    erl_syntax:application(
+                        erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs
+                    )
+                ]
+            end
     ),
 
     RightNodeClause = erl_syntax:clause(
         [gen_eval:pat_tuple(PatPhiRight)],
         GuardPhiRight,
-        [
-            erl_syntax:application(
-                erl_syntax:variable(RightNodeFunctionName), PsiRightFunctionArgs
-            )
-        ]
+
+         case ?IS_TERMINATING_HML(PsiRight) of
+            true ->
+                [erl_syntax:application(
+                        erl_syntax:variable(RightNodeFunctionName), PsiRightFunctionArgs
+                    )
+                ];
+            _ -> 
+                [erl_syntax:application(erl_syntax:atom(update_current_state), CompositeFunctionArgs),
+                    erl_syntax:application(
+                        erl_syntax:variable(RightNodeFunctionName), PsiRightFunctionArgs
+                    )
+                ]
+            end
     ),
 
     MissingEventClause = erl_syntax:clause(
@@ -363,10 +384,12 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
                 lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)])
         end,
 
+    % TODO: should really remove the "From" var when calling update_current_state... there are better ways of doing this -> find out how
+
     Clause = erl_syntax:clause(
         [gen_eval:pat_tuple(Pat)],
         Guard,
-        [erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
+        [erl_syntax:application(erl_syntax:atom(update_current_state), NextFunctionArgs),erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
     ),
 
     MissingEventClause = erl_syntax:clause(
@@ -386,12 +409,14 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
         case ?IS_TERMINATING_HML(Phi) of
             true ->
                 ?TRACE("Terminating function detected - Atomic termination generated. ~n"),
-                [erl_syntax:clause(FunctionArgs, none, erl_syntax:clause_body(Clause))];
+                % ! Using lists:nth here cause of the update_state -> we do not need to update state when giving a verdict...
+                [erl_syntax:clause(FunctionArgs, none, [lists:nth(2,erl_syntax:clause_body(Clause))])];
             _ ->
                 case ?IS_RECURSIVE_HML(Phi) of
                     true ->
                         ?TRACE("Recursive function detected - Recursive call generated. ~n"),
-                        [erl_syntax:clause(FunctionArgs, none, erl_syntax:clause_body(Clause))];
+                        % ! Using lists:nth here cause of the update_state -> we do not need to update state during internal transitions...
+                        [erl_syntax:clause(FunctionArgs, none, [lists:nth(2,erl_syntax:clause_body(Clause))])];
                     _ ->
                         [ReceiveClause]
                     end
@@ -465,7 +490,14 @@ generate_init_block(OuterNode =
 
     ReceiveExpr = erl_syntax:receive_expr([LeftNodeClause, RightNodeClause]),
     ?TRACE("Generated init block for 'and' node. ~n"),
-    [ReceiveExpr];
+
+    % State Management
+    % TODO: This needs a refactor... check init_block also, can be combined
+    EtsInitExpr = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(new), [erl_syntax:atom(sus_state), erl_syntax:list([erl_syntax:atom(named_table),erl_syntax:atom(public),erl_syntax:atom(set)])]),
+    EtsInsertCurrentState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(current_state),erl_syntax:atom(start)])]),
+    EtsInsertPreviousState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(previous_state),erl_syntax:atom(undefined)])]),
+
+    lists:flatten([EtsInitExpr,EtsInsertCurrentState,EtsInsertPreviousState,ReceiveExpr]);
 
 generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}, Phi}, _Opts) when Mod =:= ?HML_NEC; Mod =:= ?HML_POS->
     ?TRACE("Generating init block for ~p node. ~n", [Mod]),
@@ -494,7 +526,15 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}
     ReceiveExpr = erl_syntax:receive_expr(AnonFunEntry),
     ?TRACE("Generated init block for ~p node. ~n",[Mod]),
     
-    [ReceiveExpr];
+    % State Management
+
+    % TODO: this needs a refactor...check above
+
+    EtsInitExpr = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(new), [erl_syntax:atom(sus_state), erl_syntax:list([erl_syntax:atom(named_table),erl_syntax:atom(public),erl_syntax:atom(set)])]),
+    EtsInsertCurrentState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(current_state),erl_syntax:atom(start)])]),
+    EtsInsertPreviousState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(previous_state),erl_syntax:atom(undefined)])]),
+
+    lists:flatten([EtsInitExpr,EtsInsertCurrentState,EtsInsertPreviousState,ReceiveExpr]);
 generate_init_block(N, _) ->
     ?ERROR("Invalid node for init block generation :~p.",[N]),
     [].
@@ -873,6 +913,39 @@ generate_all_states() ->
                 [],
                 [],
                 [TransitionsAssignment,StateAssignment,FunctionReturn]
+            )
+        ]
+    )].
+
+%%% ----------------------------------------------------------------------------
+%%% State Management
+%%% ----------------------------------------------------------------------------
+
+generate_state_management() ->
+    generate_update_system_state_function().    
+
+generate_update_system_state_function()->
+    ParamEvent = erl_syntax:variable("Event"),
+    OutdatedStateVariable = erl_syntax:variable("OutdatedState"),
+    UpdatedStateVariable = erl_syntax:variable("UpdatedState"),
+
+    OutdatedClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(lookup_element),[erl_syntax:atom(sus_state),erl_syntax:atom(current_state),erl_syntax:integer(2)]),
+
+    UpdatedClause = erl_syntax:application(erl_syntax:atom(reachable_states), [OutdatedStateVariable,ParamEvent]),
+
+    OutdatedClauseAssignment = erl_syntax:infix_expr(OutdatedStateVariable,erl_syntax:operator('='),OutdatedClause),
+    UpdatedClauseAssignment = erl_syntax:infix_expr(UpdatedStateVariable,erl_syntax:operator('='),UpdatedClause),
+
+    UpdateStateClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert),[erl_syntax:atom(sus_state),erl_syntax:tuple([erl_syntax:atom(current_state),UpdatedStateVariable])]),
+
+    [erl_syntax:function(
+        erl_syntax:atom(update_current_state),
+        [
+            % TODO: When understanding how to pass the correct vars, remove the underscore
+            erl_syntax:clause(
+                [ParamEvent, erl_syntax:underscore()],
+                [],
+                [OutdatedClauseAssignment,UpdatedClauseAssignment,UpdateStateClause]
             )
         ]
     )].
