@@ -293,6 +293,9 @@ generate_function(
         end,
    
  
+    BoundedVarsLeftClean= lists:usort(lists:filter(fun(Elem) -> not lists:member(Elem, ['_']) end, BoundVarsLeft)),
+    BoundedVarsRightClean= lists:usort(lists:filter(fun(Elem) -> not lists:member(Elem, ['_']) end, BoundVarsRight)),
+
     LeftNodeClause = erl_syntax:clause(
         [gen_eval:pat_tuple(PatPhiLeft)],
         GuardPhiLeft,
@@ -306,7 +309,7 @@ generate_function(
                 ];
             _->
                 [
-                    erl_syntax:application(erl_syntax:atom(update_current_state), PsiLeftFunctionArgs),    
+                    erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedVarsLeftClean])),    
                     erl_syntax:application(
                         erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs
                     )
@@ -325,7 +328,7 @@ generate_function(
                     )
                 ];
             _ -> 
-                [erl_syntax:application(erl_syntax:atom(update_current_state), CompositeFunctionArgs),
+                [erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedVarsRightClean])),
                     erl_syntax:application(
                         erl_syntax:variable(RightNodeFunctionName), PsiRightFunctionArgs
                     )
@@ -384,12 +387,12 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
                 lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)])
         end,
 
-    % TODO: should really remove the "From" var when calling update_current_state... there are better ways of doing this -> find out how
-
+    % remove extra fluff for function call 
+    BoundedVars=lists:filter(fun(Elem) -> not lists:member(Elem, ['_']) end, BoundVars),
     Clause = erl_syntax:clause(
         [gen_eval:pat_tuple(Pat)],
         Guard,
-        [erl_syntax:application(erl_syntax:atom(update_current_state), NextFunctionArgs),erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
+        [erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedVars])),erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
     ),
 
     MissingEventClause = erl_syntax:clause(
@@ -404,6 +407,7 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
         [erl_syntax:receive_expr([Clause,MissingEventClause])]
     ),
 
+    % remove extra fluff for function call 
     Function = erl_syntax:function(
         erl_syntax:atom(FunctionName),
         case ?IS_TERMINATING_HML(Phi) of
@@ -492,9 +496,10 @@ generate_init_block(OuterNode =
     ?TRACE("Generated init block for 'and' node. ~n"),
 
     % State Management
-    % TODO: This needs a refactor... check init_block also, can be combined
+    % TODO: This needs a refactor... check init_block also, can be combined.
+    % TODO: DOUBLE CHECK THIS START STATE -> MAYBE LOOK INTO IT ABIT -> FOR NOW WE ALWAYS ASSUME S0 as start state
     EtsInitExpr = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(new), [erl_syntax:atom(sus_state), erl_syntax:list([erl_syntax:atom(named_table),erl_syntax:atom(public),erl_syntax:atom(set)])]),
-    EtsInsertCurrentState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(current_state),erl_syntax:atom(start)])]),
+    EtsInsertCurrentState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(current_state),erl_syntax:atom(s0)])]),
     EtsInsertPreviousState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(previous_state),erl_syntax:atom(undefined)])]),
 
     lists:flatten([EtsInitExpr,EtsInsertCurrentState,EtsInsertPreviousState,ReceiveExpr]);
@@ -505,17 +510,20 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}
     NextFunctionName = generate_function_name(Phi),
     NextFunctionArgs = generate_function_args(Phi, []),
     
+    % ! TEMP SOLUTION
+    BoundedFunctionArgs = lists:filter(fun(Elem) -> not lists:member(Elem, ["From"]) end, NextFunctionArgs),
+
     persistent_term:put(NextFunctionName, NextFunctionArgs),
     AnonFunEntry = 
         case Mod of 
             ?HML_NEC ->
                 % ! There might be an issue with updating state here ....
                 [erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [
-                erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs])),erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
+                erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedFunctionArgs])),erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
                 ])];
             ?HML_POS ->
                 [erl_syntax:clause([gen_eval:pat_tuple(Pat)], (Guard), [
-                erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs])),erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
+                erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedFunctionArgs])),erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
                 ]),
                 erl_syntax:clause([gen_eval:pat_tuple(Pat)], invert_operator(Guard), [
                 erl_syntax:application(erl_syntax:atom(rejection), lists:flatten([erl_syntax:variable("From")]))
@@ -532,7 +540,7 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}
     % TODO: this needs a refactor...check above
 
     EtsInitExpr = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(new), [erl_syntax:atom(sus_state), erl_syntax:list([erl_syntax:atom(named_table),erl_syntax:atom(public),erl_syntax:atom(set)])]),
-    EtsInsertCurrentState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(current_state),erl_syntax:atom(start)])]),
+    EtsInsertCurrentState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(current_state),erl_syntax:atom(s0)])]),
     EtsInsertPreviousState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(previous_state),erl_syntax:atom(undefined)])]),
 
     lists:flatten([EtsInitExpr,EtsInsertCurrentState,EtsInsertPreviousState,ReceiveExpr]);
@@ -880,7 +888,6 @@ generate_all_states() ->
     DstVar = erl_syntax:variable('Dst'),
     AccVar = erl_syntax:variable('Acc'),
     StatesVar = erl_syntax:variable('States'),
-    UniqueStatesVar = erl_syntax:variable('UniqueStates'),
 
     TransitionsAssignment = erl_syntax:infix_expr(
         SysInfoVar,
@@ -932,21 +939,24 @@ generate_update_system_state_function()->
 
     OutdatedClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(lookup_element),[erl_syntax:atom(sus_state),erl_syntax:atom(current_state),erl_syntax:integer(2)]),
 
-    UpdatedClause = erl_syntax:application(erl_syntax:atom(reachable_states), [OutdatedStateVariable,ParamEvent]),
+    UpdatedClause = erl_syntax:application(erl_syntax:atom(reachable_state), [OutdatedStateVariable,ParamEvent]),
 
     OutdatedClauseAssignment = erl_syntax:infix_expr(OutdatedStateVariable,erl_syntax:operator('='),OutdatedClause),
     UpdatedClauseAssignment = erl_syntax:infix_expr(UpdatedStateVariable,erl_syntax:operator('='),UpdatedClause),
 
-    UpdateStateClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert),[erl_syntax:atom(sus_state),erl_syntax:tuple([erl_syntax:atom(current_state),UpdatedStateVariable])]),
+    UpdatePreviousStateClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert),[erl_syntax:atom(sus_state),erl_syntax:tuple([erl_syntax:atom(previous_state),OutdatedStateVariable])]),
+
+    UpdateCurrentStateClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert),[erl_syntax:atom(sus_state),erl_syntax:tuple([erl_syntax:atom(current_state),UpdatedStateVariable])]),
+
 
     [erl_syntax:function(
         erl_syntax:atom(update_current_state),
         [
             % TODO: When understanding how to pass the correct vars, remove the underscore
             erl_syntax:clause(
-                [ParamEvent, erl_syntax:underscore()],
+                [ParamEvent],
                 [],
-                [OutdatedClauseAssignment,UpdatedClauseAssignment,UpdateStateClause]
+                [OutdatedClauseAssignment,UpdatedClauseAssignment,UpdatePreviousStateClause,UpdateCurrentStateClause]
             )
         ]
     )].
@@ -957,10 +967,10 @@ generate_update_system_state_function()->
 %%% ----------------------------------------------------------------------------
 
 agm_generation()->
-    lists:flatten([generate_reachable_states_function(), generate_preceeding_states_from_state_function()]).
+    lists:flatten([generate_reachable_state_function(), generate_preceeding_states_from_state_function(), generate_deduce_event_function(),generate_handle_missing_event_function(),generate_preceeding_states_from_event_function()]).
 
-% reachable_states/2
-generate_reachable_states_function()->
+% reachable_state/2
+generate_reachable_state_function()->
     
     % vars
     ParamState = erl_syntax:variable('State'),
@@ -982,7 +992,7 @@ generate_reachable_states_function()->
     CaseCondition2 = erl_syntax:application(ConditionVar,[ParamEvent]),
     CaseCondition = erl_syntax:infix_expr(CaseCondition1, erl_syntax:operator('andalso'), CaseCondition2),
 
-    CaseConditionTrueBody = erl_syntax:cons(DstVar,AccVar),
+    CaseConditionTrueBody = DstVar,
     CaseConditionFalseBody = AccVar,
 
     CaseExpression = erl_syntax:case_expr(
@@ -1014,7 +1024,7 @@ generate_reachable_states_function()->
                                 ),
 
     [erl_syntax:function(
-        erl_syntax:atom(reachable_states),
+        erl_syntax:atom(reachable_state),
         [
             erl_syntax:clause(
                 [ParamState,ParamEvent],
@@ -1076,6 +1086,136 @@ generate_preceeding_states_from_state_function() ->
             )
         ]
     )].
+
+generate_preceeding_states_from_event_function()->
+    ParamEvent = erl_syntax:variable("Event"),
+    AccVar = erl_syntax:variable("Acc"),
+    StateVar = erl_syntax:variable("State"),
+
+    CaseExpression = erl_syntax:case_expr(
+        erl_syntax:application(erl_syntax:atom(reachable_state), [erl_syntax:variable("State"), ParamEvent]),
+        [
+            erl_syntax:clause(
+                [erl_syntax:list([])],
+                [],
+                [AccVar]
+            ),
+            erl_syntax:clause(
+                [erl_syntax:underscore()],
+                [],
+                [erl_syntax:cons(StateVar,AccVar)]
+            )
+            ]
+        ),
+
+    FoldBody = erl_syntax:fun_expr([
+        erl_syntax:clause(
+            [StateVar, AccVar],
+            [],
+            [CaseExpression])
+    ]),
+
+     FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
+                        [FoldBody, erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(get_system_states),[])]
+                        ),
+
+
+     [erl_syntax:function(
+        erl_syntax:atom(preceeding_states_from_event),
+        [
+            erl_syntax:clause(
+                [ParamEvent],
+                [],
+                [FoldExpression]
+            )
+        ]
+    )].
+
+% validate_state_transition/2
+generate_deduce_event_function()->
+    % vars
+    ParamCurrentState = erl_syntax:variable('CurrentState'),
+    ParamNextState  = erl_syntax:variable('NextState'),
+    TransitionsVar = erl_syntax:variable('StateTransitionTable'),
+    SrcVar = erl_syntax:variable('Src'),
+    DstVar = erl_syntax:variable('Dst'),
+    EventVar = erl_syntax:variable('Event'),
+    AccVar = erl_syntax:variable('Acc'),
+
+
+    TransitionsAssignment = erl_syntax:infix_expr(
+        TransitionsVar,
+        erl_syntax:operator('='),
+        erl_syntax:application(erl_syntax:atom(init_transitions),[])
+        ),
+
+    % For Case Expression
+    CaseConditionUndefBody = erl_syntax:tuple([erl_syntax:atom(ok),EventVar]),
+    CaseConditionNonDetBody = erl_syntax:tuple([erl_syntax:atom(error),erl_syntax:atom(non_deterministic)]),
+
+    CaseExpression = erl_syntax:case_expr(
+        AccVar,
+        [
+            erl_syntax:clause(
+                [erl_syntax:atom(undefined)],
+                [],
+                [CaseConditionUndefBody]
+            ),
+            erl_syntax:clause(
+                [erl_syntax:tuple([erl_syntax:atom(ok),erl_syntax:underscore()])],
+                [],
+                [CaseConditionNonDetBody]
+            )
+            ]
+        ),
+
+    IfClauseMatch = 
+        erl_syntax:clause([],
+        [erl_syntax:infix_expr(erl_syntax:infix_expr(SrcVar,erl_syntax:operator('=:='),ParamCurrentState),erl_syntax:operator('andalso'),erl_syntax:infix_expr(DstVar,erl_syntax:operator('=:='),ParamNextState))],
+        [CaseExpression]),
+
+    IfClauseNoMatch = 
+        erl_syntax:clause([],
+        [erl_syntax:atom(true)],
+        [AccVar]),
+
+    IfExpression = erl_syntax:if_expr([IfClauseMatch,IfClauseNoMatch]),
+
+    FoldBody = erl_syntax:fun_expr([
+        erl_syntax:clause(
+            [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),EventVar]),AccVar],
+            [],
+            [IfExpression])
+    ]),
+
+    FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
+                    [FoldBody, erl_syntax:atom(undefined), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
+                            ),
+
+       [erl_syntax:function(
+        erl_syntax:atom(validate_state_transition),
+        [
+            erl_syntax:clause(
+                [ParamCurrentState,ParamNextState],
+                [],
+                [TransitionsAssignment,FoldExpression]
+            )
+        ]
+    )].         
+
+generate_handle_missing_event_function()->
+    [erl_syntax:function(
+        erl_syntax:atom(handle_missing_event),
+        [
+            erl_syntax:clause(
+                [],
+                [],
+                []
+            )
+        ]
+    )].
+
+    
 
 %%% ----------------------------------------------------------------------------
 %%% Private monitor environment creation functions.
@@ -1280,7 +1420,6 @@ new_ph() ->
 extract_free_vars_from_guard(Guard, Pat) ->
     BoundVars = extract_vars(Pat, []),
     extract_vars_guard(Guard, BoundVars, []).
-
 -spec extract_bound_vars_from_guard(Node) -> string() when
     Node :: af_maxhml().
 extract_bound_vars_from_guard(Node = {Vrd, LineNumber}) ->

@@ -30,7 +30,7 @@ with
 check
   [{_ <- _, token_server:loop(OwnTok, _)}]
   max X.(
-    [{_ ? {_, _}}](
+    [{_ ? {Var, _}}](
       [{_:_ ! Tok when OwnTok =:= Tok}]ff
       and
       [{_:_ ! Tok when OwnTok =/= Tok}]X
