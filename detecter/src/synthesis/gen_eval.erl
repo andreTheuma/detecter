@@ -435,7 +435,7 @@ pat_tuple({recv, _, Pid, Var}) ->
     erl_syntax:atom(trace), Pid, erl_syntax:atom('receive'), Var]),erl_syntax:variable("From")]);
 pat_tuple({missing_event})->
     erl_syntax:tuple([
-    erl_syntax:atom(missing_event)]).
+    erl_syntax:atom(missing_event),erl_syntax:variable("From")]).
 
 
 -spec mfargs_tuple(MFArgs :: af_mfargs()) -> erl_syntax:syntaxTree().

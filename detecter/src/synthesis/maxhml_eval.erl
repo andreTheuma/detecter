@@ -336,12 +336,49 @@ generate_function(
             end
     ),
 
+    CaseCondition = erl_syntax:application(erl_syntax:atom(handle_missing_event),[erl_syntax:variable("From")]),
+
+    CaseConditionAccBody1 =  erl_syntax:application(erl_syntax:atom(io),erl_syntax:atom(format),[erl_syntax:string("Missing event deduced and accepted, please retrace last event again...~n")]),
+    
+    CaseConditionAccBody2 =  case ?IS_TERMINATING_HML(PsiLeft) of
+                                true ->
+                                    case ?IS_TERMINATING_HML(PsiRight) of
+                                        true ->
+                                           erl_syntax:application(erl_syntax:atom(io),erl_syntax:atom(format),[erl_syntax:string("Witholding verdict... monitor uncertain how to terminate.~n")]);
+                                        _->
+                                             erl_syntax:application(erl_syntax:atom(RightNodeFunctionName), PsiRightFunctionArgs)
+                                        end;
+                                _-> 
+                                    case ?IS_TERMINATING_HML(PsiRight) of
+                                        true ->
+                                            erl_syntax:application(erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs);
+                                        _->
+                                            erl_syntax:application(erl_syntax:atom(io),erl_syntax:atom(format),[erl_syntax:string("Witholding verdict... monitor uncertain.~n")])
+                                        end
+                                    end,
+    
+    CaseConditionRejBody1 = erl_syntax:application(erl_syntax:atom(rejection),[erl_syntax:variable("From")]),
+
+    CaseExpression = erl_syntax:case_expr(
+        CaseCondition,
+        [
+            erl_syntax:clause(
+                [erl_syntax:atom(accepted)],
+                [],
+                [CaseConditionAccBody1,CaseConditionAccBody2]
+            ),
+            erl_syntax:clause(
+                [erl_syntax:atom(false)],
+                [],
+                [CaseConditionRejBody1]
+            )
+            ]
+        ),
+
     MissingEventClause = erl_syntax:clause(
         [gen_eval:pat_tuple({missing_event})],
         none,
-        [erl_syntax:atom(ok)]
-        ),
-
+        [CaseExpression]),
     ReceiveClause = erl_syntax:clause(
         CompositeFunctionArgs,
         none,
@@ -373,9 +410,6 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
                 lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)])
         end,
 
-
-    ?TRACE("Function Args ~p", [FunctionArgs]),
-
     NextBoundVars = extract_bound_vars_from_guard(Phi),
     NextFunctionName = generate_function_name(Phi),
     NextFunctionArgs = 
@@ -395,11 +429,33 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
         [erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedVars])),erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
     ),
 
+    CaseCondition = erl_syntax:application(erl_syntax:atom(handle_missing_event),[erl_syntax:variable("From")]),
+
+    CaseConditionAccBody1 =  erl_syntax:application(erl_syntax:atom(io),erl_syntax:atom(format),[erl_syntax:string("Missing event deduced and accepted, please retrace last event again...~n")]),
+    CaseConditionAccBody2 =  erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs),
+    
+    CaseConditionRejBody1 = erl_syntax:application(erl_syntax:atom(rejection),[erl_syntax:variable("From")]),
+
+    CaseExpression = erl_syntax:case_expr(
+        CaseCondition,
+        [
+            erl_syntax:clause(
+                [erl_syntax:atom(accepted)],
+                [],
+                [CaseConditionAccBody1,CaseConditionAccBody2]
+            ),
+            erl_syntax:clause(
+                [erl_syntax:atom(false)],
+                [],
+                [CaseConditionRejBody1]
+            )
+            ]
+        ),
+
     MissingEventClause = erl_syntax:clause(
         [gen_eval:pat_tuple({missing_event})],
         none,
-        [erl_syntax:atom(ok)]
-        ),
+        [CaseExpression]),
 
     ReceiveClause = erl_syntax:clause(
         FunctionArgs,
@@ -967,7 +1023,7 @@ generate_update_system_state_function()->
 %%% ----------------------------------------------------------------------------
 
 agm_generation()->
-    lists:flatten([generate_reachable_state_function(), generate_preceeding_states_from_state_function(), generate_deduce_event_function(),generate_handle_missing_event_function(),generate_preceeding_states_from_event_function()]).
+    lists:flatten([generate_reachable_state_function(), generate_preceeding_states_from_state_function(),generate_handle_missing_event_function(),generate_preceeding_states_from_event_function(),generate_reachable_state_from_state(), generate_validate_state_transition()]).
 
 % reachable_state/2
 generate_reachable_state_function()->
@@ -1033,6 +1089,57 @@ generate_reachable_state_function()->
             )
         ]
     )].
+
+% reachable_states_from_state/1
+generate_reachable_state_from_state() ->
+  % vars
+    ParamState = erl_syntax:variable('State'),
+    TransitionsVar = erl_syntax:variable('StateTransitionTable'),
+    SrcVar = erl_syntax:variable('Src'),
+    DstVar = erl_syntax:variable('Dst'),
+    ConditionVar = erl_syntax:variable('_Condition'),
+    AccVar = erl_syntax:variable('Acc'),
+
+    TransitionsAssignment = erl_syntax:infix_expr(
+        TransitionsVar,
+        erl_syntax:operator('='),
+        erl_syntax:application(erl_syntax:atom(init_transitions),[])
+        ),
+
+    % For If Expression 
+    IfClauseMatch = 
+        erl_syntax:clause([],
+        [erl_syntax:infix_expr(SrcVar,erl_syntax:operator('=:='),ParamState)],
+        [erl_syntax:application(erl_syntax:atom(lists), erl_syntax:atom(usort), [erl_syntax:cons(DstVar, AccVar)])]),
+    
+    IfClauseNoMatch = 
+        erl_syntax:clause([],
+        [erl_syntax:atom(true)],
+        [AccVar]),
+
+    IfExpression = erl_syntax:if_expr([IfClauseMatch,IfClauseNoMatch]),
+
+    FoldBody = erl_syntax:fun_expr([
+        erl_syntax:clause(
+            [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),ConditionVar]),AccVar],
+            [],
+            [IfExpression])
+    ]),
+
+    FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
+                            [FoldBody, erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
+                            ),
+               [erl_syntax:function(
+    
+    erl_syntax:atom(reachable_states_from_state),
+        [
+            erl_syntax:clause(
+                [ParamState],
+                [],
+                [TransitionsAssignment,FoldExpression]
+            )
+        ]
+    )].                 
 
 % preceeding_states/1
 generate_preceeding_states_from_state_function() ->
@@ -1131,8 +1238,81 @@ generate_preceeding_states_from_event_function()->
         ]
     )].
 
+% % validate_state_transition/2
+% generate_deduce_event_function()->
+%     % vars
+%     ParamCurrentState = erl_syntax:variable('CurrentState'),
+%     ParamNextState  = erl_syntax:variable('NextState'),
+%     TransitionsVar = erl_syntax:variable('StateTransitionTable'),
+%     SrcVar = erl_syntax:variable('Src'),
+%     DstVar = erl_syntax:variable('Dst'),
+%     EventVar = erl_syntax:variable('Event'),
+%     AccVar = erl_syntax:variable('Acc'),
+
+
+%     TransitionsAssignment = erl_syntax:infix_expr(
+%         TransitionsVar,
+%         erl_syntax:operator('='),
+%         erl_syntax:application(erl_syntax:atom(init_transitions),[])
+%         ),
+
+%     % For Case Expression
+%     CaseConditionUndefBody = erl_syntax:tuple([erl_syntax:atom(ok),EventVar]),
+%     CaseConditionNonDetBody = erl_syntax:tuple([erl_syntax:atom(error),erl_syntax:atom(non_deterministic)]),
+
+%     CaseExpression = erl_syntax:case_expr(
+%         AccVar,
+%         [
+%             erl_syntax:clause(
+%                 [erl_syntax:atom(undefined)],
+%                 [],
+%                 [CaseConditionUndefBody]
+%             ),
+%             erl_syntax:clause(
+%                 [erl_syntax:tuple([erl_syntax:atom(ok),erl_syntax:underscore()])],
+%                 [],
+%                 [CaseConditionNonDetBody]
+%             )
+%             ]
+%         ),
+
+%     IfClauseMatch = 
+%         erl_syntax:clause([],
+%         [erl_syntax:infix_expr(erl_syntax:infix_expr(SrcVar,erl_syntax:operator('=:='),ParamCurrentState),erl_syntax:operator('andalso'),erl_syntax:infix_expr(DstVar,erl_syntax:operator('=:='),ParamNextState))],
+%         [CaseExpression]),
+
+%     IfClauseNoMatch = 
+%         erl_syntax:clause([],
+%         [erl_syntax:atom(true)],
+%         [AccVar]),
+
+%     IfExpression = erl_syntax:if_expr([IfClauseMatch,IfClauseNoMatch]),
+
+%     FoldBody = erl_syntax:fun_expr([
+%         erl_syntax:clause(
+%             [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),EventVar]),AccVar],
+%             [],
+%             [IfExpression])
+%     ]),
+
+%     FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
+%                     [FoldBody, erl_syntax:atom(undefined), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
+%                             ),
+
+%        [erl_syntax:function(
+%         erl_syntax:atom(validate_state_transition),
+%         [
+%             erl_syntax:clause(
+%                 [ParamCurrentState,ParamNextState],
+%                 [],
+%                 [TransitionsAssignment,FoldExpression]
+%             )
+%         ]
+%     )].         
+
 % validate_state_transition/2
-generate_deduce_event_function()->
+generate_validate_state_transition()->
+
     % vars
     ParamCurrentState = erl_syntax:variable('CurrentState'),
     ParamNextState  = erl_syntax:variable('NextState'),
@@ -1149,68 +1329,106 @@ generate_deduce_event_function()->
         erl_syntax:application(erl_syntax:atom(init_transitions),[])
         ),
 
-    % For Case Expression
-    CaseConditionUndefBody = erl_syntax:tuple([erl_syntax:atom(ok),EventVar]),
-    CaseConditionNonDetBody = erl_syntax:tuple([erl_syntax:atom(error),erl_syntax:atom(non_deterministic)]),
+        CaseCondition = erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(is_key), [erl_syntax:tuple([ParamCurrentState,ParamNextState]),TransitionsVar]),
 
     CaseExpression = erl_syntax:case_expr(
-        AccVar,
-        [
-            erl_syntax:clause(
-                [erl_syntax:atom(undefined)],
-                [],
-                [CaseConditionUndefBody]
+            CaseCondition,
+            [
+                erl_syntax:clause(
+                    [erl_syntax:atom(true)],
+                    [],
+                    [erl_syntax:atom(true)]
+                ),
+                erl_syntax:clause(
+                    [erl_syntax:atom(false)],
+                    [],
+                    [erl_syntax:atom(false)]
+                )
+                ]
             ),
-            erl_syntax:clause(
-                [erl_syntax:tuple([erl_syntax:atom(ok),erl_syntax:underscore()])],
-                [],
-                [CaseConditionNonDetBody]
-            )
-            ]
-        ),
 
-    IfClauseMatch = 
-        erl_syntax:clause([],
-        [erl_syntax:infix_expr(erl_syntax:infix_expr(SrcVar,erl_syntax:operator('=:='),ParamCurrentState),erl_syntax:operator('andalso'),erl_syntax:infix_expr(DstVar,erl_syntax:operator('=:='),ParamNextState))],
-        [CaseExpression]),
 
-    IfClauseNoMatch = 
-        erl_syntax:clause([],
-        [erl_syntax:atom(true)],
-        [AccVar]),
 
-    IfExpression = erl_syntax:if_expr([IfClauseMatch,IfClauseNoMatch]),
-
-    FoldBody = erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),EventVar]),AccVar],
-            [],
-            [IfExpression])
-    ]),
-
-    FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-                    [FoldBody, erl_syntax:atom(undefined), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
-                            ),
-
-       [erl_syntax:function(
+        [erl_syntax:function(
         erl_syntax:atom(validate_state_transition),
         [
             erl_syntax:clause(
                 [ParamCurrentState,ParamNextState],
                 [],
-                [TransitionsAssignment,FoldExpression]
+                [TransitionsAssignment,CaseExpression]
             )
         ]
     )].         
 
+
 generate_handle_missing_event_function()->
+
+    LastKnownVariable = erl_syntax:variable("LastKnownState"),
+    FromVar = erl_syntax:variable("From"),
+    SX2Var = erl_syntax:variable("S_X2_Alpha1"),
+    ReachableFromLastKnownVar = erl_syntax:variable("ReachableFromLastKnown"),
+    SX0Var = erl_syntax:variable("S_X0"),
+    PayloadVar = erl_syntax:variable("Payload"),
+
+    LastKnownStateAssignment = erl_syntax:infix_expr(LastKnownVariable,erl_syntax:operator('='),erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(lookup_element),[erl_syntax:atom(sus_state),erl_syntax:atom(current_state),erl_syntax:integer(2)])),
+
+    Output1 = erl_syntax:application(erl_syntax:atom(io),erl_syntax:atom(format),[erl_syntax:string("Missing event detected, tracing next event...~n")]),
+
+    SX2Assignment = erl_syntax:infix_expr(SX2Var,erl_syntax:operator("="),erl_syntax:application(erl_syntax:atom(preceeding_states_from_event),[PayloadVar])),
+
+    ReachableFromLastKnownAssignment = erl_syntax:infix_expr(ReachableFromLastKnownVar,erl_syntax:operator("="),erl_syntax:application(erl_syntax:atom(reachable_states_from_state),[LastKnownVariable])),
+
+    SX0Assignment = erl_syntax:infix_expr(SX0Var,erl_syntax:operator("="),
+            erl_syntax:application(erl_syntax:atom(sets),erl_syntax:atom(to_list),[
+                erl_syntax:application(erl_syntax:atom(sets),erl_syntax:atom(intersection),[
+                    erl_syntax:application(erl_syntax:atom(sets),erl_syntax:atom(from_list),[ReachableFromLastKnownVar]),
+                    erl_syntax:application(erl_syntax:atom(sets),erl_syntax:atom(from_list),[SX2Var])
+                    ])
+                ])),
+
+    Output2 = erl_syntax:application(erl_syntax:atom(io),erl_syntax:atom(format),[erl_syntax:string("State at missing event is: ~p~n"), erl_syntax:list([SX0Var])]),
+
+    CaseCondition = erl_syntax:application(erl_syntax:atom(validate_state_transition),[LastKnownVariable,SX0Var]),
+    CaseConditionTrueBody1 =  erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert),[erl_syntax:atom(sus_state),erl_syntax:tuple([erl_syntax:atom(previous_state),LastKnownVariable])]),
+    
+    CaseConditionTrueBody2 = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert),[erl_syntax:atom(sus_state),erl_syntax:tuple([erl_syntax:atom(current_state),SX0Var])]),
+
+    AcceptedAtom = erl_syntax:atom(accepted),
+
+    CaseExpression = erl_syntax:case_expr(
+    CaseCondition,
+        [
+            erl_syntax:clause(
+                [erl_syntax:atom(true)],
+                [],
+                [CaseConditionTrueBody1,CaseConditionTrueBody2,AcceptedAtom]
+            ),
+            erl_syntax:clause(
+                [erl_syntax:atom(false)],
+                [],
+                [erl_syntax:atom(false)]
+            )
+            ]
+        ),
+    
+
+    % TODO: SUPPORT MORE CLAUSE TYPES ...SUCH AS RECEIVE AND THOSE KINDS 
+    ReceiveClauseSend = erl_syntax:clause(
+        [erl_syntax:tuple([erl_syntax:tuple([
+            erl_syntax:atom(trace), erl_syntax:underscore(), erl_syntax:atom(send), PayloadVar,  erl_syntax:underscore()]),FromVar])],
+        none,
+        [Output1, SX2Assignment,ReachableFromLastKnownAssignment, SX0Assignment,Output2,CaseExpression]
+    ),
+
+    ReceiveExpr = erl_syntax:receive_expr([ReceiveClauseSend]),
+
     [erl_syntax:function(
         erl_syntax:atom(handle_missing_event),
         [
             erl_syntax:clause(
+                [FromVar],
                 [],
-                [],
-                []
+                [LastKnownStateAssignment,ReceiveExpr]
             )
         ]
     )].
