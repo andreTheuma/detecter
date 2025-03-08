@@ -112,4 +112,4 @@ verbose_opt(Opts) ->
 %% for corrupted event recovery. Defaults to 'false'.
 -spec monitor_table_opt(Opts :: options()) -> Dir :: string().
 monitor_table_opt(Opts) ->
-  proplists:get_value(?OPT_MONITOR_TABLE, Opts, ".").
+  proplists:get_value(?OPT_MONITOR_TABLE, Opts, false).
