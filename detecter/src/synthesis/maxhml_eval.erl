@@ -82,6 +82,13 @@
     end
 ).
 
+-define(IS_NORMAL_MODE(Opts),
+    case opts:monitor_table_opt(Opts) of
+        false -> true;
+        _ -> false
+    end
+).
+
 %% Monitor AST node tags.
 -define(MON_ACC, yes).
 -define(MON_CORR, corrupt).
@@ -343,7 +350,7 @@ generate_function(
         [gen_eval:pat_tuple(PatPhiLeft)],
         GuardPhiLeft,
 
-        case ?IS_TERMINATING_HML(PsiLeft) of
+        case ?IS_TERMINATING_HML(PsiLeft) orelse ?IS_NORMAL_MODE(_Opts) of
             true ->
                 [
                     erl_syntax:application(
@@ -367,7 +374,7 @@ generate_function(
         [gen_eval:pat_tuple(PatPhiRight)],
         GuardPhiRight,
 
-        case ?IS_TERMINATING_HML(PsiRight) of
+        case ?IS_TERMINATING_HML(PsiRight) orelse ?IS_NORMAL_MODE(_Opts) of
             true ->
                 [
                     erl_syntax:application(
@@ -387,16 +394,15 @@ generate_function(
         end
     ),
 
+    % Building conditional for missing event handling 
     CaseCondition = erl_syntax:application(erl_syntax:atom(handle_missing_event), [
         erl_syntax:variable("From")
     ]),
-
     CaseConditionAccBody1 = erl_syntax:application(erl_syntax:atom(io), erl_syntax:atom(format), [
         erl_syntax:string(
             "Missing event deduced and accepted, please retrace last event again...~n"
         )
     ]),
-
     CaseConditionAccBody2 =
         case ?IS_TERMINATING_HML(PsiLeft) of
             true ->
@@ -424,11 +430,9 @@ generate_function(
                         ])
                 end
         end,
-
     CaseConditionRejBody1 = erl_syntax:application(erl_syntax:atom(rejection), [
         erl_syntax:variable("From")
     ]),
-
     CaseExpression = erl_syntax:case_expr(
         CaseCondition,
         [
@@ -444,16 +448,23 @@ generate_function(
             )
         ]
     ),
-
     MissingEventClause = erl_syntax:clause(
         [gen_eval:pat_tuple({missing_event})],
         none,
         [CaseExpression]
     ),
+
     ReceiveClause = erl_syntax:clause(
         CompositeFunctionArgs,
         none,
-        [erl_syntax:receive_expr([LeftNodeClause, RightNodeClause, MissingEventClause])]
+        [
+            case ?IS_NORMAL_MODE(_Opts) of
+                true ->
+                    erl_syntax:receive_expr([LeftNodeClause, RightNodeClause]);
+                _ ->
+                    erl_syntax:receive_expr([LeftNodeClause, RightNodeClause, MissingEventClause])
+                end
+        ]
     ),
 
     Function = erl_syntax:function(
@@ -469,6 +480,7 @@ generate_function(
         ])
     ];
 generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opts) ->
+    
     BoundVars = extract_bound_vars_from_guard(Node),
     FunctionName = generate_function_name(Node),
     ?TRACE("Generating function ~p for 'nec' node from src line ~p. ~n ", [FunctionName, LineNumber]),
@@ -498,12 +510,9 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
         [gen_eval:pat_tuple(Pat)],
         Guard,
         [
-            case ?IS_TERMINATING_HML(Phi) of
+            case ?IS_TERMINATING_HML(Phi) orelse ?IS_NORMAL_MODE(_Opts) of
                 true ->
-                    erl_syntax:application(
-                        erl_syntax:atom(NextFunctionName),
-                        lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs])
-                    );
+                    erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs);
                 _ ->
                     erl_syntax:application(
                         erl_syntax:atom(update_current_state),
@@ -514,10 +523,10 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
         ]
     ),
 
+    % Building conditional for missing event handling 
     CaseCondition = erl_syntax:application(erl_syntax:atom(handle_missing_event), [
         erl_syntax:variable("From")
     ]),
-
     CaseConditionAccBody1 = erl_syntax:application(erl_syntax:atom(io), erl_syntax:atom(format), [
         erl_syntax:string(
             "Missing event deduced and accepted, please retrace last event again...~n"
@@ -556,41 +565,37 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
     ReceiveClause = erl_syntax:clause(
         FunctionArgs,
         none,
-        [erl_syntax:receive_expr([Clause, MissingEventClause])]
+        [ 
+            case ?IS_NORMAL_MODE(_Opts) of
+                true ->
+                    erl_syntax:receive_expr([Clause]);
+                _->
+                     erl_syntax:receive_expr([Clause, MissingEventClause])
+            end
+        ]
     ),
 
     % remove extra fluff for function call
     Function = erl_syntax:function(
         erl_syntax:atom(FunctionName),
-        case ?IS_TERMINATING_HML(Phi) of
+        case ?IS_TERMINATING_HML(Phi) orelse ?IS_RECURSIVE_HML(Phi) of
             true ->
                 ?TRACE("Terminating function detected - Atomic termination generated. ~n"),
-                % ! Using lists:nth here cause of the update_state -> we do not need to update state when giving a verdict...
+                ?TRACE("The clause is ~p. ~n", [erl_syntax:clause_body(Clause)]),
+                % ! Using lists:nth here cause of the update_state -> we do not need to update state when giving a verdict / during internal transitions...
                 [
                     erl_syntax:clause(FunctionArgs, none, [
-                        lists:nth(2, erl_syntax:clause_body(Clause))
+                        lists:nth(1, erl_syntax:clause_body(Clause))
                     ])
                 ];
             _ ->
-                case ?IS_RECURSIVE_HML(Phi) of
-                    true ->
-                        ?TRACE("Recursive function detected - Recursive call generated. ~n"),
-                        % ! Using lists:nth here cause of the update_state -> we do not need to update state during internal transitions...
-                        [
-                            erl_syntax:clause(FunctionArgs, none, [
-                                lists:nth(2, erl_syntax:clause_body(Clause))
-                            ])
-                        ];
-                    _ ->
-                        [ReceiveClause]
-                end
+                [ReceiveClause]
         end
     ),
 
     ?TRACE("Generated function ~p. ~n", [FunctionName]),
 
     [Function | lists:flatten([generate_function(Phi, _Opts)])];
-
 generate_function(Node = {?HML_POS, LineNumber, {act, _, Pat, Guard}, Phi}, _Opts) ->
     % TODO: This needs to be completed
     ?TRACE("INCOMPLETE: Generating function for 'pos' node ~p. ~n ", [Node]),
