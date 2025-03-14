@@ -394,7 +394,7 @@ generate_function(
         end
     ),
 
-    % Building conditional for missing event handling 
+    % Building conditional for missing event handling
     CaseCondition = erl_syntax:application(erl_syntax:atom(handle_missing_event), [
         erl_syntax:variable("From")
     ]),
@@ -463,7 +463,7 @@ generate_function(
                     erl_syntax:receive_expr([LeftNodeClause, RightNodeClause]);
                 _ ->
                     erl_syntax:receive_expr([LeftNodeClause, RightNodeClause, MissingEventClause])
-                end
+            end
         ]
     ),
 
@@ -480,7 +480,6 @@ generate_function(
         ])
     ];
 generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opts) ->
-    
     BoundVars = extract_bound_vars_from_guard(Node),
     FunctionName = generate_function_name(Node),
     ?TRACE("Generating function ~p for 'nec' node from src line ~p. ~n ", [FunctionName, LineNumber]),
@@ -509,21 +508,21 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
     Clause = erl_syntax:clause(
         [gen_eval:pat_tuple(Pat)],
         Guard,
-        [
-            case ?IS_TERMINATING_HML(Phi) orelse ?IS_NORMAL_MODE(_Opts) of
-                true ->
-                    erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs);
-                _ ->
+        case ?IS_NORMAL_MODE(_Opts) of
+            true ->
+                [erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)];
+            _ ->
+                [
                     erl_syntax:application(
                         erl_syntax:atom(update_current_state),
                         lists:flatten([erl_syntax:variable(V) || V <- BoundedVars])
                     ),
                     erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)
-            end
-        ]
+                ]
+        end
     ),
 
-    % Building conditional for missing event handling 
+    % Building conditional for missing event handling
     CaseCondition = erl_syntax:application(erl_syntax:atom(handle_missing_event), [
         erl_syntax:variable("From")
     ]),
@@ -565,12 +564,12 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
     ReceiveClause = erl_syntax:clause(
         FunctionArgs,
         none,
-        [ 
+        [
             case ?IS_NORMAL_MODE(_Opts) of
                 true ->
                     erl_syntax:receive_expr([Clause]);
-                _->
-                     erl_syntax:receive_expr([Clause, MissingEventClause])
+                _ ->
+                    erl_syntax:receive_expr([Clause, MissingEventClause])
             end
         ]
     ),
@@ -580,12 +579,10 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
         erl_syntax:atom(FunctionName),
         case ?IS_TERMINATING_HML(Phi) orelse ?IS_RECURSIVE_HML(Phi) of
             true ->
-                ?TRACE("Terminating function detected - Atomic termination generated. ~n"),
-                ?TRACE("The clause is ~p. ~n", [erl_syntax:clause_body(Clause)]),
                 % ! Using lists:nth here cause of the update_state -> we do not need to update state when giving a verdict / during internal transitions...
                 [
                     erl_syntax:clause(FunctionArgs, none, [
-                        lists:nth(1, erl_syntax:clause_body(Clause))
+                    lists:nth(2, erl_syntax:clause_body(Clause))
                     ])
                 ];
             _ ->
@@ -737,17 +734,19 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}
                     erl_syntax:clause(
                         [gen_eval:pat_tuple(Pat)],
                         Guard,
-                        [
-                            case ?IS_TERMINATING_HML(Phi) of
-                                true ->
+                        case ?IS_TERMINATING_HML(Phi) of
+                            true ->
+                                [
                                     erl_syntax:application(
                                         erl_syntax:atom(NextFunctionName),
                                         lists:flatten([
                                             erl_syntax:variable(V)
                                          || V <- NextFunctionArgs
                                         ])
-                                    );
-                                _ ->
+                                    )
+                                ];
+                            _ ->
+                                [
                                     erl_syntax:application(
                                         erl_syntax:atom(update_current_state),
                                         lists:flatten([
@@ -762,8 +761,8 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}
                                          || V <- NextFunctionArgs
                                         ])
                                     )
-                            end
-                        ]
+                                ]
+                        end
                     )
                 ];
             ?HML_POS ->
@@ -1707,7 +1706,7 @@ generate_handle_missing_event_function() ->
         ])
     ),
 
-    Output1 = erl_syntax:application(erl_syntax:atom(io), erl_syntax:atom(format), [
+    MissingEventOutputText = erl_syntax:application(erl_syntax:atom(io), erl_syntax:atom(format), [
         erl_syntax:string("Missing event detected, tracing next event...~n")
     ]),
 
@@ -1724,7 +1723,7 @@ generate_handle_missing_event_function() ->
     ),
 
     SX0Assignment = erl_syntax:infix_expr(
-        SX0Var,
+        erl_syntax:list([SX0Var]),
         erl_syntax:operator("="),
         erl_syntax:application(erl_syntax:atom(sets), erl_syntax:atom(to_list), [
             erl_syntax:application(erl_syntax:atom(sets), erl_syntax:atom(intersection), [
@@ -1790,7 +1789,6 @@ generate_handle_missing_event_function() ->
         ],
         none,
         [
-            Output1,
             SX2Assignment,
             ReachableFromLastKnownAssignment,
             SX0Assignment,
@@ -1808,7 +1806,7 @@ generate_handle_missing_event_function() ->
                 erl_syntax:clause(
                     [FromVar],
                     [],
-                    [LastKnownStateAssignment, ReceiveExpr]
+                    [LastKnownStateAssignment, MissingEventOutputText, ReceiveExpr]
                 )
             ]
         )
