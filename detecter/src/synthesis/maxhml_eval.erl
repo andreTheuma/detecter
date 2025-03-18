@@ -581,9 +581,20 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
             true ->
                 % ! Using lists:nth here cause of the update_state -> we do not need to update state when giving a verdict / during internal transitions...
                 [
-                    erl_syntax:clause(FunctionArgs, none, [
-                    lists:nth(2, erl_syntax:clause_body(Clause))
-                    ])
+                    erl_syntax:clause(
+                        FunctionArgs,
+                        none,
+                        case ?IS_NORMAL_MODE(_Opts) of
+                            true ->
+                                [
+                                    lists:nth(1, erl_syntax:clause_body(Clause))
+                                ];
+                            _ ->
+                                [
+                                    lists:nth(2, erl_syntax:clause_body(Clause))
+                                ]
+                        end
+                    )
                 ];
             _ ->
                 [ReceiveClause]
@@ -734,7 +745,7 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}
                     erl_syntax:clause(
                         [gen_eval:pat_tuple(Pat)],
                         Guard,
-                        case ?IS_TERMINATING_HML(Phi) of
+                        case ?IS_TERMINATING_HML(Phi) orelse ?IS_NORMAL_MODE(_Opts) of
                             true ->
                                 [
                                     erl_syntax:application(
