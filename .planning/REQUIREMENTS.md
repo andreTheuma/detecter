@@ -14,9 +14,9 @@
 
 ### Parser Contract
 
-- [ ] **PARS-01**: `sys_info_parser_test` matches the symbolic parser contract consumed by synthesis.
-- [ ] **PARS-02**: START/NULL handling is consistent with `detecter/priv/sys_info.spec` and thesis examples.
-- [ ] **PARS-03**: Parser tests clean up temporary files reliably.
+- [x] **PARS-01**: `sys_info_parser_test` matches the symbolic parser contract consumed by synthesis.
+- [x] **PARS-02**: START/NULL handling is consistent with `detecter/priv/sys_info.spec` and thesis examples.
+- [x] **PARS-03**: Parser tests clean up temporary files reliably.
 
 ### Generated Monitor Correctness
 
@@ -90,9 +90,9 @@
 | TEST-02 | Phase 1 | Complete |
 | TEST-03 | Phase 1 | Complete |
 | TEST-04 | Phase 1 | Complete |
-| PARS-01 | Phase 2 | Pending |
-| PARS-02 | Phase 2 | Pending |
-| PARS-03 | Phase 2 | Pending |
+| PARS-01 | Phase 2 | Complete |
+| PARS-02 | Phase 2 | Complete |
+| PARS-03 | Phase 2 | Complete |
 | GEN-01 | Phase 3 | Pending |
 | GEN-02 | Phase 3 | Pending |
 | GEN-03 | Phase 3 | Pending |
@@ -115,4 +115,4 @@
 
 ---
 *Requirements defined: 2026-06-24*
-*Last updated: 2026-06-24 after Phase 1 completion.*
+*Last updated: 2026-06-24 after Phase 2 completion.*

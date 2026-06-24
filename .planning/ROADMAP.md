@@ -6,7 +6,7 @@ This roadmap tracks the remediation work needed to bring the detectEr codebase i
 
 ## Milestones
 
-- **v0.1 Thesis Claim Stabilization** - Phases 1-5. Current active remediation target; Phase 1 complete.
+- **v0.1 Thesis Claim Stabilization** - Phases 1-5. Current active remediation target; Phases 1-2 complete.
 - **v0.2 System Information Robustness** - Phases 6-9. Planned follow-up.
 - **v0.3 Runtime Hardening** - Phases 10-13. Planned follow-up.
 - **v0.4 Research Evidence and Thesis Traceability** - Phases 14-17. Planned follow-up.
@@ -42,8 +42,8 @@ Plans:
 **Plans:** TBD
 
 Plans:
-- [ ] 02-01: Update stale parser expectations.
-- [ ] 02-02: Add focused tests for START, NULL, integers, symbolic ranges, and set-minus guards.
+- [x] 02-01: Update stale parser expectations.
+- [x] 02-02: Add focused tests for START, NULL, integers, symbolic ranges, and set-minus guards.
 
 #### Phase 3: Generated Monitor Compile Correctness
 **Goal:** Ensure modular synthesis emits Erlang modules that compile cleanly.
@@ -317,8 +317,8 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. Test Harness Baseline | v0.1 | 3/3 | Complete | 2026-06-24 |
-| 2. Parser Contract Alignment | v0.1 | 0/2 | Ready | - |
-| 3. Generated Monitor Compile Correctness | v0.1 | 0/2 | Not started | - |
+| 2. Parser Contract Alignment | v0.1 | 2/2 | Complete | 2026-06-24 |
+| 3. Generated Monitor Compile Correctness | v0.1 | 0/2 | Ready | - |
 | 4. Sound AGM State Regeneration | v0.1 | 0/3 | Not started | - |
 | 5. Irrevocability and Verdict Semantics | v0.1 | 0/3 | Not started | - |
 | 6. Specification Grammar Definition | v0.2 | 0/2 | Planned | - |

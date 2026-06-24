@@ -3,10 +3,10 @@ gsd_state_version: '1.0'
 status: in_progress
 progress:
   total_phases: 21
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 46
-  completed_plans: 3
-  percent: 7
+  completed_plans: 5
+  percent: 11
 ---
 
 # Project State
@@ -16,21 +16,21 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-24)
 
 **Core value:** Generated monitors must only emit verdicts that are sound and irrevocable for the traced system model, especially when traces contain missing events.
-**Current focus:** Phase 2: Parser Contract Alignment
+**Current focus:** Phase 3: Generated Monitor Compile Correctness
 
 ## Current Position
 
-Phase: 2 of 21 (Parser Contract Alignment)
+Phase: 3 of 21 (Generated Monitor Compile Correctness)
 Plan: 0 of 2 in current phase
 Status: Ready to plan
-Last activity: 2026-06-24 - Completed Phase 1 by documenting the manual `tracer_test` boundary and default test target.
+Last activity: 2026-06-24 - Completed Phase 2; parser contract coverage now has focused tests for START/NULL, integer events, symbolic ranges, set-minus guards, and combined complex events.
 
-Progress: [#---------] 7%
+Progress: [#---------] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 5
 - Average duration: not tracked yet
 - Total execution time: not tracked yet
 
@@ -39,6 +39,7 @@ Progress: [#---------] 7%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Test Harness Baseline | 3/3 | not tracked | not tracked |
+| 2. Parser Contract Alignment | 2/2 | not tracked | not tracked |
 
 ## Accumulated Context
 
@@ -50,11 +51,13 @@ Decisions are logged in `.planning/PROJECT.md` Key Decisions table.
 - Phase 1: `tracer_test` remains excluded from the default Makefile test target until timing-sensitive behavior is stabilized or documented.
 - Phase 1: The initial generated-monitor compile smoke test uses `prop_no_leak`; Phase 3 will broaden coverage to properties that currently expose generator arity bugs.
 - Phase 1: The `tracer_test` exclusion is now documented beside the Makefile `test` target with a manual command.
+- Phase 2: Parser expectations now match the symbolic condition tuples consumed by synthesis.
+- Phase 2: Parser coverage is split into focused tests so failures identify which part of the accepted `.spec` contract changed.
 
 ### Pending Todos
 
-- Phase 2 plan 02-01: Update stale parser expectations and contract notes.
-- Phase 2 plan 02-02: Add focused parser tests for START, NULL, integers, symbolic ranges, and set-minus guards.
+- Phase 3 plan 03-01: Fix state-update arity generation in init and verdict paths.
+- Phase 3 plan 03-02: Add compile checks for representative generated monitors.
 
 ### Blockers/Concerns
 
@@ -72,5 +75,5 @@ Decisions are logged in `.planning/PROJECT.md` Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-06-24
-Stopped at: Phase 1 complete; ready for Phase 2.
+Stopped at: Phase 2 complete; ready for Phase 3.
 Resume file: None

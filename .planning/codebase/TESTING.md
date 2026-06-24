@@ -144,6 +144,7 @@ file:delete(TempFile).
 - Some test support depends on `-DTEST` conditional exports from production modules, especially `get_tracer/1` and `get_backlog/0` in `detecter/src/tracing/log_tracer.erl`.
 - The default `make test` target currently invokes `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
 - `generated_monitor_smoke_test` compiles generated Erlang source for `test/props/prop_no_leak.hml`; broader generated-property coverage is tracked in Phase 3.
+- `sys_info_parser_test` contains focused contract tests for START/NULL, integer events, symbolic ranges, set-minus guards, and combined complex events.
 
 **Integration Tests:**
 - `detecter/test/monitoring/tracer_test.erl` exercises offline monitor/tracer interaction with real monitor processes and synthetic event streams.

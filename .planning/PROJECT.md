@@ -16,10 +16,11 @@ Generated monitors must only emit verdicts that are sound and irrevocable for th
 - [x] Phase 1 plan 01-01: `make test` no longer compiles generated `detecter/test/**/ebin/**` Erlang artifacts as hand-written test source.
 - [x] Phase 1 plan 01-02: `make test` now runs `sys_info_parser_test` and `generated_monitor_smoke_test`.
 - [x] Phase 1 plan 01-03: timing-sensitive `tracer_test` exclusion is documented in the Makefile and testing notes.
+- [x] Phase 2 plan 02-01: parser expectations match the symbolic system-information contract consumed by synthesis.
+- [x] Phase 2 plan 02-02: parser contract coverage is split into focused START/NULL, integer, symbolic range, and set-minus tests.
 
 ### Active
 
-- [ ] Align `sys_info_parser` tests with the symbolic system-information contract used by synthesis.
 - [ ] Broaden generated-monitor compile coverage beyond the currently smoke-tested recursive regeneration property.
 - [ ] Fix generated monitor compile errors caused by invalid state-update calls.
 - [ ] Rework AGM missing-event handling to deduce only singleton states/events and withhold otherwise.
@@ -87,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-24 after Phase 1 completion.*
+*Last updated: 2026-06-24 after Phase 2 completion.*
