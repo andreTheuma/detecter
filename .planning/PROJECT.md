@@ -15,10 +15,10 @@ Generated monitors must only emit verdicts that are sound and irrevocable for th
 - [x] Existing log tracing tests run through `make test`.
 - [x] Phase 1 plan 01-01: `make test` no longer compiles generated `detecter/test/**/ebin/**` Erlang artifacts as hand-written test source.
 - [x] Phase 1 plan 01-02: `make test` now runs `sys_info_parser_test` and `generated_monitor_smoke_test`.
+- [x] Phase 1 plan 01-03: timing-sensitive `tracer_test` exclusion is documented in the Makefile and testing notes.
 
 ### Active
 
-- [ ] Document intentionally excluded timing-sensitive tracer tests.
 - [ ] Align `sys_info_parser` tests with the symbolic system-information contract used by synthesis.
 - [ ] Broaden generated-monitor compile coverage beyond the currently smoke-tested recursive regeneration property.
 - [ ] Fix generated monitor compile errors caused by invalid state-update calls.
@@ -49,6 +49,7 @@ Generated monitors must only emit verdicts that are sound and irrevocable for th
 - The thesis-critical implementation lives primarily in `detecter/src/synthesis/maxhml_eval.erl` and `detecter/src/regeneration/sys_info_parser.erl`.
 - Codebase mapping docs live under `.planning/codebase/` and should be treated as audit context rather than source-of-truth API documentation.
 - The first verified repair excludes generated regeneration artifacts from test-source compilation. `make test` now reaches EUnit and runs `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
+- `tracer_test` remains manual because it relies on timing sleeps to exercise concurrent tracer routing; this boundary is now documented next to the Makefile test target.
 
 ## Constraints
 
@@ -65,6 +66,7 @@ Generated monitors must only emit verdicts that are sound and irrevocable for th
 | Track thesis fixes as v0.1 before broader cleanup | The thesis claims depend on AGM and generated-monitor correctness more than general runtime hardening. | Pending |
 | Exclude `test/**/ebin/**` from test-source compilation | Generated regeneration fixtures can have source filenames that do not match module names and should not be compiled as hand-written tests. | Good |
 | Keep the initial generated-monitor smoke test focused on `prop_no_leak` | It exercises recursive regeneration code that currently compiles, while the broader failing property matrix belongs to the generator correctness phase. | Pending |
+| Keep `tracer_test` manual for now | The suite is timing-dependent and should be rewritten around coarser state assertions or deterministic synchronization before entering the default target. | Pending |
 | Keep ambiguous missing-event traces as `withhold` cases | Sound verdicts require deterministic inference, not approximation. | Pending |
 
 ## Evolution
@@ -85,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-24 after Phase 1 plan 01-02 verification.*
+*Last updated: 2026-06-24 after Phase 1 completion.*

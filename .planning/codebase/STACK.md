@@ -35,7 +35,7 @@
 
 **Testing:**
 - EUnit - Test modules include `eunit/include/eunit.hrl` in `detecter/test/tracing/log_tracer_test.erl`, `detecter/test/monitoring/tracer_test.erl`, and `detecter/test/regeneration/sys_info_parser_test.erl`
-- Make-driven test runner - `detecter/Makefile` runs `erl -noshell -pa ebin -eval 'case eunit:test(log_tracer_test, [verbose]) ...'`
+- Make-driven test runner - `detecter/Makefile` runs `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`; `tracer_test` is documented as a manual timing-sensitive suite.
 
 **Build/Dev:**
 - GNU Make - Main build/test/analyze commands in `detecter/Makefile`; example builds in `examples/erlang/Makefile`, `examples/elixir/Makefile`, and `examples/python/Makefile`

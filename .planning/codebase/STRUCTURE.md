@@ -134,9 +134,10 @@ detecter/
 - `detecter/priv/maxhml_lexer.xrl` and `detecter/priv/maxhml_parser.yrl`: Source specs for `detecter/src/synthesis/maxhml_lexer.erl` and `detecter/src/synthesis/maxhml_parser.erl`.
 
 **Testing:**
-- `detecter/test/tracing/log_tracer_test.erl`: EUnit tests currently run by `make test`.
-- `detecter/test/monitoring/tracer_test.erl`: Tracer tests present but not enabled in the default `make test` target.
-- `detecter/test/regeneration/sys_info_parser_test.erl`: Regeneration parser tests.
+- `detecter/test/tracing/log_tracer_test.erl`: Log tracer EUnit tests run by `make test`.
+- `detecter/test/monitoring/tracer_test.erl`: Timing-sensitive tracer tests present but intentionally manual.
+- `detecter/test/regeneration/sys_info_parser_test.erl`: Regeneration parser tests run by `make test`.
+- `detecter/test/regeneration/generated_monitor_smoke_test.erl`: Generated monitor compile smoke test run by `make test`.
 - `detecter/test/props/*.hml`: HML property fixtures.
 - `detecter/priv/trace_test*.log`: Offline trace fixtures.
 

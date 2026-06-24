@@ -10,7 +10,7 @@
 - [x] **TEST-01**: `make test` excludes generated `detecter/test/**/ebin/**` Erlang artifacts from hand-written test-source compilation.
 - [x] **TEST-02**: Regeneration parser tests run through the default test target.
 - [x] **TEST-03**: A generated monitor compile smoke test runs for a representative recursive regeneration property.
-- [ ] **TEST-04**: Timing-sensitive tracer tests are documented as included, excluded, or manual.
+- [x] **TEST-04**: Timing-sensitive tracer tests are documented as manual and excluded from the default target until stabilized.
 
 ### Parser Contract
 
@@ -89,7 +89,7 @@
 | TEST-01 | Phase 1 | Complete |
 | TEST-02 | Phase 1 | Complete |
 | TEST-03 | Phase 1 | Complete |
-| TEST-04 | Phase 1 | Pending |
+| TEST-04 | Phase 1 | Complete |
 | PARS-01 | Phase 2 | Pending |
 | PARS-02 | Phase 2 | Pending |
 | PARS-03 | Phase 2 | Pending |
@@ -115,4 +115,4 @@
 
 ---
 *Requirements defined: 2026-06-24*
-*Last updated: 2026-06-24 after Phase 1 plan 01-02 verification.*
+*Last updated: 2026-06-24 after Phase 1 completion.*

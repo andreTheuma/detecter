@@ -16,6 +16,7 @@
 cd detecter && make test        # Compile with -DTEST and run log_tracer_test, sys_info_parser_test, and generated_monitor_smoke_test
 cd detecter && make test-loop   # Re-run log_tracer_test 100 times for flake detection
 cd detecter && make analyze     # Run Dialyzer over source modules after compile
+cd detecter && make compile-test && erl -noshell -pa ebin -eval 'case eunit:test(tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 ```
 
 ## Test File Organization
@@ -146,7 +147,8 @@ file:delete(TempFile).
 
 **Integration Tests:**
 - `detecter/test/monitoring/tracer_test.erl` exercises offline monitor/tracer interaction with real monitor processes and synthetic event streams.
-- The active `detecter/Makefile` `test` target comments out `tracer_test`, so these integration-style tests are present but not run by default.
+- The active `detecter/Makefile` `test` target documents `tracer_test` as a manual suite, so these integration-style tests are present but not run by default.
+- `tracer_test` is intentionally manual because the suite uses `timer:sleep/1` waits to inspect concurrent trace-routing interleavings. Run it manually when changing tracer routing, process deletion, or monitor attachment behavior.
 
 **E2E Tests:**
 - No automated end-to-end test framework is detected.
@@ -178,6 +180,7 @@ Result = log_tracer:preempt(?P1),
 **Timing-Dependent Tests:**
 - Timing waits exist through `?small_wait` in `detecter/test/tracing/log_tracer_test.erl` and `detecter/test/monitoring/tracer_test.erl`.
 - `detecter/test/monitoring/tracer_test.erl` documents that the tracer tests are timing-dependent and excluded from the main build in `detecter/Makefile`. New concurrency tests should prefer deterministic synchronization through messages or helper functions such as `util:syn/1`, `util:syn_ack/1`, `util:promise/1`, and `util:then/1` in `detecter/src/util.erl`.
+- Before moving `tracer_test` into the default test target, rewrite the assertions to check coarser final monitored state or add deterministic synchronization so the suite does not depend on scheduler timing.
 
 ---
 

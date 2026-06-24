@@ -244,6 +244,7 @@
 - Location: `detecter/Makefile`
 - Triggers: `make test` from `detecter/`.
 - Responsibilities: Compile source and hand-written tests with `-DTEST`, excluding generated `test/**/ebin/**` regeneration artifacts, then run `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
+- Boundary: `tracer_test` is intentionally excluded from the default target because it uses timing-dependent concurrent routing assertions; the Makefile documents the manual command.
 
 ## Architectural Constraints
 

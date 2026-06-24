@@ -26,11 +26,15 @@ compile-test: clean
 	erlc -DTEST -pa $(BIN) +debug_info -I $(INCLUDE) -o $(BIN) $(call recursive,$(SRC),erl)
 	erlc -DTEST -pa $(BIN) -I $(INCLUDE) -o $(BIN) $(TEST_SRC)
 
+# tracer_test is intentionally excluded from the default target because
+# test/monitoring/tracer_test.erl still relies on timer:sleep-based assertions
+# for concurrent trace routing. Run it manually after compile-test when working
+# on tracer routing:
+#   erl -noshell -pa $(BIN) -eval 'case eunit:test(tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 test: compile-test
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(log_tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(sys_info_parser_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(generated_monitor_smoke_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
-	#erl -noshell -pa $(BIN) -eval 'case eunit:test(tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 
 analyze:
 	 dialyzer -pa $(BIN) -I $(INCLUDE) $(call recursive,$(SRC),erl)

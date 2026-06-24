@@ -15,8 +15,11 @@ No milestones have shipped yet.
 **Current progress:**
 - Phase 1 plan 01-01 is complete.
 - Phase 1 plan 01-02 is complete.
+- Phase 1 plan 01-03 is complete.
+- Phase 1 is complete.
 - `make test` reaches EUnit and runs `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
-- Next task: document intentionally excluded timing-sensitive tests.
+- `tracer_test` remains manual because it is timing-dependent; the Makefile documents the manual command.
+- Next task: begin Phase 2 parser contract alignment.
 
 ### v0.2 System Information Robustness
 

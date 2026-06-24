@@ -44,10 +44,10 @@
 - Workaround: No safe code path is present. Keep `tracer_test` scenarios that exercise process death enabled when changing trace routing.
 
 **Default test target does not run the main tracer suite:**
-- Symptoms: `detecter/Makefile` runs only `log_tracer_test`; the `tracer_test` EUnit invocation is commented out. `detecter/test/monitoring/tracer_test.erl` states the tests are time dependent and excluded from the main build.
+- Symptoms: `detecter/Makefile` runs `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`; `tracer_test` remains manual. `detecter/test/monitoring/tracer_test.erl` states the tests are time dependent and excluded from the main build.
 - Files: `detecter/Makefile`, `detecter/test/monitoring/tracer_test.erl`
 - Trigger: Running `make test`.
-- Workaround: Run `erl -noshell -pa ebin -eval 'eunit:test(tracer_test, [verbose])' -s init stop` manually after compiling tests, after fixing the generated `ebin` compilation issue.
+- Workaround: Run `make compile-test` and then `erl -noshell -pa ebin -eval 'case eunit:test(tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop` manually when changing tracer routing.
 
 **Deprecated stacktrace API remains in compile path:**
 - Symptoms: `make test` emits warnings for removed `erlang:get_stacktrace/0` calls in source files.
@@ -89,7 +89,7 @@
 - Files: `detecter/src/monitoring/tracer.erl`, `detecter/src/tracing/log_tracer.erl`, `detecter/test/monitoring/tracer_test.erl`, `detecter/test/tracing/log_tracer_test.erl`
 - Why fragile: Routing depends on interleavings among process fork/exit events, ETS state, and asynchronous messages. The most detailed tracer tests use sleeps and are excluded from the default build.
 - Safe modification: Preserve route/traced-map invariants, add deterministic synchronization to tests before changing `add_proc/3`, `del_proc/2`, `add_route/4`, `del_route/3`, or event forwarding paths, and run the tracer suite repeatedly.
-- Test coverage: `log_tracer_test` is included by the make target; `tracer_test` is not included and currently depends on timing.
+- Test coverage: `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test` are included by the make target; `tracer_test` is not included and currently depends on timing.
 
 **Generated parsers and lexers are checked in beside source grammars:**
 - Files: `detecter/priv/hml_parser.yrl`, `detecter/src/monitoring/hml_parser.erl`, `detecter/priv/shml_parser.yrl`, `detecter/src/monitoring/shml_parser.erl`, `detecter/priv/maxhml_parser.yrl`, `detecter/src/synthesis/maxhml_parser.erl`, `detecter/priv/*_lexer.xrl`, `detecter/src/**/*_lexer.erl`
