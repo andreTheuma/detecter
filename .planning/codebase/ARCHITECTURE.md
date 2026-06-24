@@ -243,7 +243,7 @@
 **EUnit test entry:**
 - Location: `detecter/Makefile`
 - Triggers: `make test` from `detecter/`.
-- Responsibilities: Compile source and tests with `-DTEST`, then run `log_tracer_test`.
+- Responsibilities: Compile source and hand-written tests with `-DTEST`, excluding generated `test/**/ebin/**` regeneration artifacts, then run `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
 
 ## Architectural Constraints
 

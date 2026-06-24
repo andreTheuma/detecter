@@ -4,11 +4,12 @@
 
 ## Tech Debt
 
-**Make-based build compiles generated test artifacts as source:**
-- Issue: `detecter/Makefile` compiles every `*.erl` under `detecter/test`, including generated files in `detecter/test/regeneration/ebin`. `make test` fails during `compile-test` because `detecter/test/regeneration/ebin/prop_no_double_a_flu_orig.erl` declares module `prop_no_double_a_flu`, which does not match the file name.
+**Make-based build previously compiled generated test artifacts as source:**
+- Status: Addressed by Phase 1 plan 01-01. `detecter/Makefile` now defines `TEST_SRC` with `! -path "*/ebin/*"` and compiles that filtered list during `compile-test`.
+- Original issue: `detecter/Makefile` compiled every `*.erl` under `detecter/test`, including generated files in `detecter/test/regeneration/ebin`. `make test` failed during `compile-test` because `detecter/test/regeneration/ebin/prop_no_double_a_flu_orig.erl` declares module `prop_no_double_a_flu`, which does not match the file name.
 - Files: `detecter/Makefile`, `detecter/test/regeneration/ebin/prop_no_double_a_flu_orig.erl`, `detecter/test/regeneration/ebin/*`
-- Impact: The default test target is red before running EUnit. New changes cannot rely on `make test` as a regression signal until generated `ebin` sources are excluded or cleaned.
-- Fix approach: Exclude `detecter/test/**/ebin/**` from the `compile-test` source list, move generated regeneration fixtures outside `ebin`, or compile only explicit test modules such as `detecter/test/tracing/log_tracer_test.erl`, `detecter/test/monitoring/tracer_test.erl`, and `detecter/test/regeneration/sys_info_parser_test.erl`.
+- Impact: The default test target now reaches EUnit and passes the active 24-test `log_tracer_test` suite. Remaining risk: generated regeneration fixtures still live in a confusing `ebin` path and need layout cleanup later.
+- Follow-up: Broaden generated-monitor compile coverage in Phase 3, then decide in Phase 21 whether to move or rename generated regeneration fixtures.
 
 **Manual AST construction duplicated across weavers:**
 - Issue: `detecter/src/monitoring/weaver.erl` and `detecter/src/synthesis/lin_weaver.erl` both hand-build Erlang abstract forms with local helpers such as `abs_atom/2`, `abs_remote_call/4`, `abs_fun/2`, and `create_var/3`. Both files contain TODOs to replace this with `erl_parse`/structured APIs.
@@ -98,9 +99,9 @@
 
 **Regeneration workflow has untracked helper code and generated artifacts:**
 - Files: `detecter/test/regeneration/automated_event_streamer.erl`, `detecter/test/regeneration/ebin/*`, `detecter/test/regeneration/sys_info_parser_test.erl`
-- Why fragile: The working tree contains an untracked helper and generated outputs under a path named `ebin`. Build commands treat generated `.erl` artifacts as source, causing failures.
-- Safe modification: Decide whether regeneration fixtures are source or build output, move them accordingly, and update `.gitignore`/`Makefile` so generated artifacts cannot enter source compilation accidentally.
-- Test coverage: `sys_info_parser_test` is compiled by `compile-test` but cannot be reached through `make test` until compilation succeeds.
+- Why fragile: The working tree contains an untracked helper and generated outputs under a path named `ebin`. `compile-test` now excludes `test/**/ebin/**`, but the fixture layout is still easy to misunderstand.
+- Safe modification: Decide whether regeneration fixtures are source or build output, move them accordingly, and keep `.gitignore`/`Makefile` rules aligned so generated artifacts cannot enter source compilation accidentally.
+- Test coverage: `sys_info_parser_test` now runs through `make test`; generated-monitor compile coverage currently includes a focused smoke test for `prop_no_leak`.
 
 ## Scaling Limits
 

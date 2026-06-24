@@ -6,14 +6,14 @@
 
 **Runner:**
 - EUnit from Erlang/OTP.
-- Config: `detecter/Makefile` defines `compile-test`, `test`, and `test-loop`; there is no `rebar.config`, Common Test config, pytest config, or JavaScript test config detected.
+- Config: `detecter/Makefile` defines `compile-test`, `test`, and `test-loop`; there is no `rebar.config`, Common Test config, pytest config, or JavaScript test config detected. `compile-test` compiles hand-written test sources from `detecter/test` while excluding generated `test/**/ebin/**` artifacts.
 
 **Assertion Library:**
 - EUnit macros from `-include_lib("eunit/include/eunit.hrl").` in `detecter/test/tracing/log_tracer_test.erl`, `detecter/test/monitoring/tracer_test.erl`, and `detecter/test/regeneration/sys_info_parser_test.erl`.
 
 **Run Commands:**
 ```bash
-cd detecter && make test        # Compile with -DTEST and run the active EUnit suite
+cd detecter && make test        # Compile with -DTEST and run log_tracer_test, sys_info_parser_test, and generated_monitor_smoke_test
 cd detecter && make test-loop   # Re-run log_tracer_test 100 times for flake detection
 cd detecter && make analyze     # Run Dialyzer over source modules after compile
 ```
@@ -23,7 +23,7 @@ cd detecter && make analyze     # Run Dialyzer over source modules after compile
 **Location:**
 - First-party Erlang tests are under `detecter/test/<area>/`: `detecter/test/tracing/log_tracer_test.erl`, `detecter/test/monitoring/tracer_test.erl`, `detecter/test/regeneration/sys_info_parser_test.erl`.
 - Test property/specification fixtures live under `detecter/test/props/*.hml`, with matching example properties under `examples/*/props/*.hml`.
-- Generated or regenerated Erlang artifacts exist under `detecter/test/regeneration/ebin/*.erl`; treat these as generated/regeneration fixtures rather than the primary hand-written test style.
+- Generated or regenerated Erlang artifacts exist under `detecter/test/regeneration/ebin/*.erl`; treat these as generated/regeneration fixtures rather than the primary hand-written test style. The Makefile excludes this path from hand-written test compilation.
 
 **Naming:**
 - Test module filenames and module names use `_test` suffix: `log_tracer_test` in `detecter/test/tracing/log_tracer_test.erl`.
@@ -141,6 +141,8 @@ file:delete(TempFile).
 **Unit Tests:**
 - EUnit module tests cover tracing allocation, event dispatch, backlog behavior, and parser behavior in `detecter/test/tracing/log_tracer_test.erl` and `detecter/test/regeneration/sys_info_parser_test.erl`.
 - Some test support depends on `-DTEST` conditional exports from production modules, especially `get_tracer/1` and `get_backlog/0` in `detecter/src/tracing/log_tracer.erl`.
+- The default `make test` target currently invokes `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
+- `generated_monitor_smoke_test` compiles generated Erlang source for `test/props/prop_no_leak.hml`; broader generated-property coverage is tracked in Phase 3.
 
 **Integration Tests:**
 - `detecter/test/monitoring/tracer_test.erl` exercises offline monitor/tracer interaction with real monitor processes and synthetic event streams.

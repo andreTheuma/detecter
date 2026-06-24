@@ -6,6 +6,7 @@ BIN=ebin
 INCLUDE=include
 SRC=src
 TEST=test
+TEST_SRC=$(shell find $(TEST) -name "*.erl" ! -path "*/ebin/*")
 
 define recursive
 	$(shell find $(1) -name "*.$(2)")
@@ -23,10 +24,12 @@ compile: clean
 compile-test: clean
 	mkdir -p $(BIN)
 	erlc -DTEST -pa $(BIN) +debug_info -I $(INCLUDE) -o $(BIN) $(call recursive,$(SRC),erl)
-	erlc -DTEST -pa $(BIN) -I $(INCLUDE) -o $(BIN) $(call recursive,$(TEST),erl)
+	erlc -DTEST -pa $(BIN) -I $(INCLUDE) -o $(BIN) $(TEST_SRC)
 
 test: compile-test
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(log_tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
+	erl -noshell -pa $(BIN) -eval 'case eunit:test(sys_info_parser_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
+	erl -noshell -pa $(BIN) -eval 'case eunit:test(generated_monitor_smoke_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	#erl -noshell -pa $(BIN) -eval 'case eunit:test(tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 
 analyze:

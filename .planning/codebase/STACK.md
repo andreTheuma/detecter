@@ -39,7 +39,7 @@
 
 **Build/Dev:**
 - GNU Make - Main build/test/analyze commands in `detecter/Makefile`; example builds in `examples/erlang/Makefile`, `examples/elixir/Makefile`, and `examples/python/Makefile`
-- `erlc` - Compiles Erlang modules from `detecter/src/**/*.erl` and `detecter/test/**/*.erl` into `detecter/ebin`
+- `erlc` - Compiles Erlang modules from `detecter/src/**/*.erl` and hand-written `detecter/test/**/*.erl` into `detecter/ebin`, excluding generated `detecter/test/**/ebin/**` fixtures during test compilation.
 - Dialyzer - Static analysis command in `detecter/Makefile` target `analyze`
 - EDoc - API documentation generation in `detecter/src/build.erl` through `edoc:application/3`
 - Leex/Yecc - Lexer and parser generation in `detecter/src/build.erl`, sourced from `detecter/priv/*.xrl` and `detecter/priv/*.yrl`
