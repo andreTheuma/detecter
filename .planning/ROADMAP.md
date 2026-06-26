@@ -6,11 +6,11 @@ This roadmap tracks the remediation work needed to bring the detectEr codebase i
 
 ## Milestones
 
-- **v0.1 Thesis Claim Stabilization** - Phases 1-5. Current active remediation target; Phases 1-2 complete.
+- **v0.1 Thesis Claim Stabilization** - Phases 1-5. Current active remediation target; Phases 1-3 complete.
 - **v0.2 System Information Robustness** - Phases 6-9. Planned follow-up.
 - **v0.3 Runtime Hardening** - Phases 10-13. Planned follow-up.
 - **v0.4 Research Evidence and Thesis Traceability** - Phases 14-17. Planned follow-up.
-- **v0.5 Deferred Cleanup** - Phases 18-21. Backlog.
+- **v0.5 Deferred Cleanup** - Phases 18-22. Backlog.
 
 ## Phases
 
@@ -50,13 +50,13 @@ Plans:
 **Depends on:** Phase 2.
 **Success Criteria** (what must be TRUE):
   1. Generated modules no longer contain invalid `update_current_state/0` calls.
-  2. Existing regeneration properties compile from generated source.
+  2. Representative regeneration properties compile from generated source.
   3. Regression coverage catches future generator arity mistakes.
 **Plans:** TBD
 
 Plans:
-- [ ] 03-01: Fix state-update arity generation in init and verdict paths.
-- [ ] 03-02: Add compile checks for representative generated monitors.
+- [x] 03-01: Fix state-update arity generation in init and verdict paths.
+- [x] 03-02: Add compile checks for representative generated monitors.
 
 #### Phase 4: Sound AGM State Regeneration
 **Goal:** Make missing-event regeneration deterministic and withholding by default when inference is not unique.
@@ -312,13 +312,26 @@ Plans:
 - [ ] 21-01: Move or rename generated fixture directories.
 - [ ] 21-02: Update ignore/build rules and documentation.
 
+#### Phase 22: Generator Variable Name Normalization
+**Goal:** Normalize variable-name representation inside synthesis helpers.
+**Depends on:** v0.1.
+**Success Criteria** (what must be TRUE):
+  1. Synthesis helper APIs use one documented representation for variable names.
+  2. State-update generation no longer needs mixed atom/string exclusions such as `'From'` and `"From"`.
+  3. Regression tests cover init, action, verdict, and recursive paths after normalization.
+**Plans:** TBD
+
+Plans:
+- [ ] 22-01: Audit generator variable extraction and function-argument helpers.
+- [ ] 22-02: Normalize variable names and update generator tests.
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. Test Harness Baseline | v0.1 | 3/3 | Complete | 2026-06-24 |
 | 2. Parser Contract Alignment | v0.1 | 2/2 | Complete | 2026-06-24 |
-| 3. Generated Monitor Compile Correctness | v0.1 | 0/2 | Ready | - |
+| 3. Generated Monitor Compile Correctness | v0.1 | 2/2 | Complete | 2026-06-26 |
 | 4. Sound AGM State Regeneration | v0.1 | 0/3 | Not started | - |
 | 5. Irrevocability and Verdict Semantics | v0.1 | 0/3 | Not started | - |
 | 6. Specification Grammar Definition | v0.2 | 0/2 | Planned | - |
@@ -337,6 +350,7 @@ Plans:
 | 19. AST Helper Consolidation | v0.5 | 0/2 | Backlog | - |
 | 20. Build Reproducibility | v0.5 | 0/2 | Backlog | - |
 | 21. Generated Fixture Layout Cleanup | v0.5 | 0/2 | Backlog | - |
+| 22. Generator Variable Name Normalization | v0.5 | 0/2 | Backlog | - |
 
 ---
 *Created: 2026-06-24 after codebase and thesis-claim audit.*

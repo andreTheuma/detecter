@@ -20,9 +20,9 @@
 
 ### Generated Monitor Correctness
 
-- [ ] **GEN-01**: Modular synthesis no longer emits invalid `update_current_state/0` calls.
-- [ ] **GEN-02**: Existing regeneration properties compile from generated source.
-- [ ] **GEN-03**: Regression tests catch future generated state-update arity mistakes.
+- [x] **GEN-01**: Modular synthesis no longer emits invalid `update_current_state/0` calls for the reproduced init-path failure.
+- [x] **GEN-02**: Representative regeneration properties compile from generated source.
+- [x] **GEN-03**: Regression tests catch future generated state-update arity mistakes.
 
 ### AGM Semantics
 
@@ -72,6 +72,7 @@
 - **CLN-02**: Duplicated AST helper construction is consolidated or documented.
 - **CLN-03**: Build reproducibility expectations are documented or improved.
 - **CLN-04**: Generated regeneration fixture layout is separated from hand-written test source.
+- **CLN-05**: Synthesis variable names use one documented internal representation instead of mixed atoms and strings.
 
 ## Out of Scope
 
@@ -93,9 +94,9 @@
 | PARS-01 | Phase 2 | Complete |
 | PARS-02 | Phase 2 | Complete |
 | PARS-03 | Phase 2 | Complete |
-| GEN-01 | Phase 3 | Pending |
-| GEN-02 | Phase 3 | Pending |
-| GEN-03 | Phase 3 | Pending |
+| GEN-01 | Phase 3 | Complete |
+| GEN-02 | Phase 3 | Complete |
+| GEN-03 | Phase 3 | Complete |
 | AGM-01 | Phase 4 | Pending |
 | AGM-02 | Phase 4 | Pending |
 | AGM-03 | Phase 4 | Pending |
@@ -106,7 +107,7 @@
 | SPEC-01..SPEC-04 | Phases 6-9 | Planned |
 | RUN-01..RUN-04 | Phases 10-13 | Planned |
 | DOC-01..DOC-04 | Phases 14-17 | Planned |
-| CLN-01..CLN-04 | Phases 18-21 | Backlog |
+| CLN-01..CLN-05 | Phases 18-22 | Backlog |
 
 **Coverage:**
 - v0.1 requirements: 17 total
@@ -115,4 +116,4 @@
 
 ---
 *Requirements defined: 2026-06-24*
-*Last updated: 2026-06-24 after Phase 2 completion.*
+*Last updated: 2026-06-26 after Phase 3 completion.*

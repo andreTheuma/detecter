@@ -143,7 +143,8 @@ file:delete(TempFile).
 - EUnit module tests cover tracing allocation, event dispatch, backlog behavior, and parser behavior in `detecter/test/tracing/log_tracer_test.erl` and `detecter/test/regeneration/sys_info_parser_test.erl`.
 - Some test support depends on `-DTEST` conditional exports from production modules, especially `get_tracer/1` and `get_backlog/0` in `detecter/src/tracing/log_tracer.erl`.
 - The default `make test` target currently invokes `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
-- `generated_monitor_smoke_test` compiles generated Erlang source for `test/props/prop_no_leak.hml`; broader generated-property coverage is tracked in Phase 3.
+- `generated_monitor_smoke_test` compiles generated Erlang source for `test/props/prop_no_leak.hml`, `test/props/prop_no_failure.hml`, and `test/props/prop_correct_start.hml`; the matrix covers recursive regeneration plus negative and positive init branches.
+- `generated_monitor_smoke_test` also asserts generated sources do not contain the old invalid `update_current_state()` call before compiling them.
 - `sys_info_parser_test` contains focused contract tests for START/NULL, integer events, symbolic ranges, set-minus guards, and combined complex events.
 
 **Integration Tests:**
@@ -185,4 +186,4 @@ Result = log_tracer:preempt(?P1),
 
 ---
 
-*Testing analysis: 2026-06-24*
+*Testing analysis: 2026-06-24; updated 2026-06-26 after Phase 3 completion.*

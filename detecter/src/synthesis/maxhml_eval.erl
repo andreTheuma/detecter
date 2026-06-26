@@ -37,6 +37,7 @@
 %%% Callbacks/Internal.
 -export([visit/2]).
 -export([modularise_hml/2,generate_init_block/2,generate_verdicts/0]).
+-export([generate_state_update_calls/1, generate_state_update_args/1, is_state_update_var/1]).
 -export([generate_state_management/0]).
 -export([generate_sys_info_function/1,generate_all_states/0,agm_generation/0]).
 
@@ -103,6 +104,9 @@
 -define(KEY_STR, str).
 -define(KEY_VAR, var).
 -define(KEY_PAT, pat).
+
+%% State management. %% TODO : we have to normalise the var names + atoms - either use var name or atom not both.
+-define(STATE_UPDATE_EXCLUDED_VARS, ['_', 'From', "_", "From"]).
 
 %% Placeholder management.
 %%-define(PH_NAMES, [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z]).
@@ -566,25 +570,23 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}
     NextFunctionName = generate_function_name(Phi),
     NextFunctionArgs = generate_function_args(Phi, []),
     
-    % ! TEMP SOLUTION
-    BoundedFunctionArgs = lists:filter(fun(Elem) -> not lists:member(Elem, ["From"]) end, NextFunctionArgs),
+    StateUpdateCalls = generate_state_update_calls(Pat),
 
     persistent_term:put(NextFunctionName, NextFunctionArgs),
     AnonFunEntry = 
         case Mod of 
             ?HML_NEC ->
-                % ! There might be an issue with updating state here ....
-                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [
-                erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedFunctionArgs])),erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
-                ])];
+                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, StateUpdateCalls ++ [
+                    erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
+            ])];
             ?HML_POS ->
-                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], (Guard), [
-                erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedFunctionArgs])),erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
+                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], (Guard), StateUpdateCalls ++ [
+                    erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
                 ]),
                 erl_syntax:clause([gen_eval:pat_tuple(Pat)], invert_operator(Guard), [
                 erl_syntax:application(erl_syntax:atom(rejection), lists:flatten([erl_syntax:variable("From")]))
                 ])
-                ]
+            ]
         end,
 
 
@@ -719,6 +721,33 @@ visit(Node = {Mod, _, {act, _, Pat, Guard}, Phi}, _Opts)
 %%% ----------------------------------------------------------------------------
 %%% Private monitor helper functions for modularisation.
 %%% ----------------------------------------------------------------------------
+
+%%% @private Generates the state update calls (`update_current_state` calls) for the given node and its continuation (in scope).
+-spec generate_state_update_calls(Pat) -> [erl_syntax:syntaxTree()] when
+    Pat :: gen_eval:af_sym_act().
+generate_state_update_calls(Pat) ->
+    case generate_state_update_args(Pat) of
+        [] ->
+            [];
+        Args ->
+            [erl_syntax:application(erl_syntax:atom(update_current_state), Args)]
+    end.
+
+-spec generate_state_update_args(Pat) -> [erl_syntax:syntaxTree()] when
+    Pat :: gen_eval:af_sym_act().
+generate_state_update_args(Pat) ->
+    case lists:filter(fun is_state_update_var/1, extract_vars(Pat, [])) of
+        [EventVar | _] ->
+            [erl_syntax:variable(EventVar)];
+        [] ->
+            []
+    end.
+
+-spec is_state_update_var(Var) -> boolean() when
+    Var :: atom() | string().
+is_state_update_var(Var) ->
+    not lists:member(Var, ?STATE_UPDATE_EXCLUDED_VARS).
+
 %%% @private Generates the function name for the given node.
 -spec generate_function_name(Node) -> atom() when
     Node :: af_maxhml().

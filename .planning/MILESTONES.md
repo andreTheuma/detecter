@@ -20,9 +20,13 @@ No milestones have shipped yet.
 - Phase 2 plan 02-01 is complete.
 - Phase 2 plan 02-02 is complete.
 - Phase 2 is complete.
+- Phase 3 plan 03-01 is complete.
+- Phase 3 plan 03-02 is complete.
+- Phase 3 is complete.
 - `make test` reaches EUnit and runs `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
+- `generated_monitor_smoke_test` now compiles generated Erlang for `prop_no_leak`, `prop_no_failure`, and `prop_correct_start`.
 - `tracer_test` remains manual because it is timing-dependent; the Makefile documents the manual command.
-- Next task: begin Phase 3 generated monitor compile correctness.
+- Next task: start Phase 4 plan 04-01 for sound AGM state-regeneration semantics.
 
 ### v0.2 System Information Robustness
 
@@ -52,9 +56,9 @@ No milestones have shipped yet.
 
 **Goal:** Track useful cleanup that should not distract from thesis stabilization.
 
-**Phases:** 18-21
+**Phases:** 18-22
 
 **Status:** Backlog
 
 ---
-*Created: 2026-06-24 after roadmap creation and Phase 1 plan 01-01 verification.*
+*Last updated: 2026-06-26 after Phase 3 completion.*

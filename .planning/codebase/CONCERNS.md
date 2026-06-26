@@ -8,8 +8,8 @@
 - Status: Addressed by Phase 1 plan 01-01. `detecter/Makefile` now defines `TEST_SRC` with `! -path "*/ebin/*"` and compiles that filtered list during `compile-test`.
 - Original issue: `detecter/Makefile` compiled every `*.erl` under `detecter/test`, including generated files in `detecter/test/regeneration/ebin`. `make test` failed during `compile-test` because `detecter/test/regeneration/ebin/prop_no_double_a_flu_orig.erl` declares module `prop_no_double_a_flu`, which does not match the file name.
 - Files: `detecter/Makefile`, `detecter/test/regeneration/ebin/prop_no_double_a_flu_orig.erl`, `detecter/test/regeneration/ebin/*`
-- Impact: The default test target now reaches EUnit and passes the active 24-test `log_tracer_test` suite. Remaining risk: generated regeneration fixtures still live in a confusing `ebin` path and need layout cleanup later.
-- Follow-up: Broaden generated-monitor compile coverage in Phase 3, then decide in Phase 21 whether to move or rename generated regeneration fixtures.
+- Impact: The default test target now reaches EUnit and passes the active 24-test `log_tracer_test` suite. Phase 3 broadened generated-monitor compile coverage to representative properties. Remaining risk: generated regeneration fixtures still live in a confusing `ebin` path and need layout cleanup later.
+- Follow-up: Decide in Phase 21 whether to move or rename generated regeneration fixtures.
 
 **Manual AST construction duplicated across weavers:**
 - Issue: `detecter/src/monitoring/weaver.erl` and `detecter/src/synthesis/lin_weaver.erl` both hand-build Erlang abstract forms with local helpers such as `abs_atom/2`, `abs_remote_call/4`, `abs_fun/2`, and `create_var/3`. Both files contain TODOs to replace this with `erl_parse`/structured APIs.
@@ -22,6 +22,12 @@
 - Files: `detecter/src/synthesis/maxhml_eval.erl`
 - Impact: Generated monitors can encode the wrong automaton state, fail for unsupported guards, or ignore non-send trace shapes. State table name reuse also prevents multiple generated monitors from safely coexisting in one Erlang node.
 - Fix approach: Make state initialization explicit in the generated spec model, use monitor-scoped ETS table names or process-local state, and add generator tests for non-`s0` starts, each supported guard, and receive/init/send trace variants.
+
+**Synthesis variable names mix atoms and strings:**
+- Issue: `detecter/src/synthesis/maxhml_eval.erl` receives variable names from parsed patterns as atoms such as `'OwnTok'` and `'_'`, while helper paths such as verdict argument generation use strings such as `"From"`.
+- Files: `detecter/src/synthesis/maxhml_eval.erl`
+- Impact: Generator helpers need defensive checks for both atom and string forms, making state-update argument selection and continuation argument handling easier to get wrong.
+- Fix approach: Phase 22 tracks normalizing synthesis variable names to one documented internal representation with regression tests across init, action, verdict, and recursive paths.
 
 **Regeneration parser is partial and string handling is missing:**
 - Issue: `detecter/src/regeneration/sys_info_parser.erl` supports only `NULL`, `N`, `Z`, `R`, and one set-minus guard. It marks unions/disjunctions and string parsing as TODOs.
@@ -101,7 +107,7 @@
 - Files: `detecter/test/regeneration/automated_event_streamer.erl`, `detecter/test/regeneration/ebin/*`, `detecter/test/regeneration/sys_info_parser_test.erl`
 - Why fragile: The working tree contains an untracked helper and generated outputs under a path named `ebin`. `compile-test` now excludes `test/**/ebin/**`, but the fixture layout is still easy to misunderstand.
 - Safe modification: Decide whether regeneration fixtures are source or build output, move them accordingly, and keep `.gitignore`/`Makefile` rules aligned so generated artifacts cannot enter source compilation accidentally.
-- Test coverage: `sys_info_parser_test` now runs through `make test`; generated-monitor compile coverage currently includes a focused smoke test for `prop_no_leak`.
+- Test coverage: `sys_info_parser_test` now runs through `make test`; generated-monitor compile coverage includes `prop_no_leak`, `prop_no_failure`, and `prop_correct_start`.
 
 ## Scaling Limits
 
