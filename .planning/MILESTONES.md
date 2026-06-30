@@ -26,7 +26,12 @@ No milestones have shipped yet.
 - `make test` reaches EUnit and runs `log_tracer_test`, `sys_info_parser_test`, and `generated_monitor_smoke_test`.
 - `generated_monitor_smoke_test` now compiles generated Erlang for `prop_no_leak`, `prop_no_failure`, and `prop_correct_start`.
 - `tracer_test` remains manual because it is timing-dependent; the Makefile documents the manual command.
-- Next task: start Phase 4 plan 04-01 for sound AGM state-regeneration semantics.
+- Phase 4 context, research, and plans are captured.
+- Phase 4 plan 04-01 is complete: generated transition rows preserve multiplicity and retain literal/symbolic event descriptors alongside condition predicates.
+- Generated AGM helpers now consume transition lists directly, and smoke tests reject map-era helper calls.
+- Thesis implementation, methodology, and discussion text now reflects transition rows, singleton concrete recovery, and explicit withholding; verified terminal listings remain pending plans 04-02 and 04-03.
+- Thesis state indexing is fixed: `X0` is immediately before the missing event and `X1` is immediately after it; Phase 4 recovery code must use the same convention.
+- Next task: execute Phase 4 plan 04-02 in co-op mode.
 
 ### v0.2 System Information Robustness
 
@@ -61,4 +66,4 @@ No milestones have shipped yet.
 **Status:** Backlog
 
 ---
-*Last updated: 2026-06-26 after Phase 3 completion.*
+*Last updated: 2026-06-29 after Phase 4 plan 04-01.*

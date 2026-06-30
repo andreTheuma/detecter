@@ -827,74 +827,112 @@ generate_function_args({Verdict, _}, _BoundVars) when Verdict =:= ?HML_TRU; Verd
 generate_sys_info_function(Opts) ->
     SourceFile = opts:monitor_table_opt(Opts),
     SysInfo = sys_info_parser:parse_file(SourceFile),
-    Map = generate_sys_info_transition(SysInfo),
+    Transitions = generate_sys_info_transition(SysInfo),
     [erl_syntax:function(
         erl_syntax:atom(init_transitions),
         [
             erl_syntax:clause(
                 [],
                 [],
-                [Map]
+                [Transitions]
             )
         ]
     )].
 
 generate_sys_info_transition(TransitionList)->
-    % Create AST for the key: {Source, Destination}
-    Fields = lists:map(fun sys_info_to_map/1, TransitionList),
-    erl_syntax:map_expr(Fields).
-    % Map.
+    Rows = lists:map(fun sys_info_to_transition/1, TransitionList),
+    erl_syntax:list(Rows).
 
-sys_info_to_map({Source, EventTuple, Destination}) ->    
-    % Key Map
-    KeyAST = erl_syntax:tuple([
+sys_info_to_transition({Source, EventTuple, Destination}) ->
+
+    EventSpecAST = generate_sys_info_event_spec(EventTuple),
+    ConditionAST = generate_sys_info_event_condition(EventTuple),
+
+    erl_syntax:tuple([
         erl_syntax:atom(Source),
-        erl_syntax:atom(Destination)
-    ]),
-    % Fun Map
-    io:format("EventTuple is: ~p~n", [EventTuple]),
-    ValueAST = parse_sys_info_event(EventTuple),
-    erl_syntax:map_field_assoc(KeyAST, ValueAST).
+        erl_syntax:atom(Destination),
+        EventSpecAST,
+        ConditionAST
+    ]).
     
 
-parse_sys_info_event({EventType, EventPayload}) when EventType =:= is_integer ->
+generate_sys_info_event_spec({is_integer, Event}) ->
+    erl_syntax:tuple([
+        erl_syntax:atom(literal),
+        erl_syntax:integer(Event)
+    ]);
+generate_sys_info_event_spec({atom, Event}) ->
+    erl_syntax:tuple([
+        erl_syntax:atom(literal),
+        erl_syntax:atom(Event)
+    ]);
+generate_sys_info_event_spec({{'fun', null}, []}) ->
+    erl_syntax:tuple([
+        erl_syntax:atom(literal),
+        erl_syntax:atom(null)
+    ]);
+generate_sys_info_event_spec({{'fun', is_natural_integer}, []}) ->
+    erl_syntax:tuple([
+        erl_syntax:atom(symbolic),
+        erl_syntax:atom(natural_integer)
+    ]);
+generate_sys_info_event_spec({{'fun', is_any_integer}, []}) ->
+    erl_syntax:tuple([
+        erl_syntax:atom(symbolic),
+        erl_syntax:atom(any_integer)
+    ]);
+generate_sys_info_event_spec({{'fun', is_real_number}, []}) ->
+    erl_syntax:tuple([
+        erl_syntax:atom(symbolic),
+        erl_syntax:atom(real_number)
+    ]);
+generate_sys_info_event_spec(
+    {{'fun', is_any_integer}, [setminus | {is_integer, ExcludedEvent}]}
+) ->
+    erl_syntax:tuple([
+        erl_syntax:atom(symbolic),
+        erl_syntax:atom(any_integer_except),
+        erl_syntax:integer(ExcludedEvent)
+    ]).
 
+generate_sys_info_event_condition({is_integer, EventPayload}) ->
     EventBody = erl_syntax:infix_expr(
         erl_syntax:variable("Event"),
         erl_syntax:operator('=:='),
         erl_syntax:integer(EventPayload)
     ),
+    erl_syntax:fun_expr([
+        erl_syntax:clause(
+            [erl_syntax:variable("Event")],
+            [],
+            [EventBody]
+        )
+    ]);
 
-    erl_syntax:fun_expr(
-        [erl_syntax:clause(
-            [erl_syntax:variable("Event")],[],[EventBody]
-            )]
-    );
-
-parse_sys_info_event({EventType, EventPayload}) when EventType =:= atom ->
-        EventBody = erl_syntax:infix_expr(
+generate_sys_info_event_condition({atom, EventPayload}) ->
+    EventBody = erl_syntax:infix_expr(
         erl_syntax:variable("Event"),
         erl_syntax:operator('=:='),
         erl_syntax:atom(EventPayload)
     ),
+    erl_syntax:fun_expr([
+        erl_syntax:clause(
+            [erl_syntax:variable("Event")],
+            [],
+            [EventBody]
+        )
+    ]);
 
-    erl_syntax:fun_expr(
-        [erl_syntax:clause(
-            [erl_syntax:variable("Event")],[],[EventBody]
-            )]
-    );
-
-parse_sys_info_event({{EventType, EventPayload}, AdditionalGuards}) when EventType =:= 'fun' ->
-    
+generate_sys_info_event_condition({{'fun', EventPayload}, AdditionalGuards}) ->
     EventVar = erl_syntax:variable("Event"),
-    % Generate body of map + additional guards in spec
-    EventBody = generate_sys_info_guard(EventPayload,AdditionalGuards),
-
-    erl_syntax:fun_expr(
-            [erl_syntax:clause(
-            [EventVar],[],[EventBody]
-            )]
-        ).
+    EventBody = generate_sys_info_guard(EventPayload, AdditionalGuards),
+    erl_syntax:fun_expr([
+        erl_syntax:clause(
+            [EventVar],
+            [],
+            [EventBody]
+        )
+    ]).
 
 generate_sys_info_guard(EventPayload, AdditionalGuards) ->
     EventVar = erl_syntax:variable("Event"),
@@ -912,7 +950,12 @@ generate_sys_info_guard(EventPayload, AdditionalGuards) ->
 
     MainGuard = case EventPayload of 
 
-            null -> erl_syntax:atom(null);
+            null ->
+                erl_syntax:infix_expr(
+                    EventVar,
+                    erl_syntax:operator('=:='),
+                    erl_syntax:atom(null)
+                );
         
             is_natural_integer -> 
                 
@@ -969,6 +1012,7 @@ generate_all_states() ->
     % vars
     SysInfoVar = erl_syntax:variable('StateTransitionTable'),
     SrcVar = erl_syntax:variable('Src'),
+    EventSpecVar = erl_syntax:variable('_EventSpec'),
     ConditionVar = erl_syntax:variable('_Condition'),
     DstVar = erl_syntax:variable('Dst'),
     AccVar = erl_syntax:variable('Acc'),
@@ -982,7 +1026,7 @@ generate_all_states() ->
 
     FoldBody = erl_syntax:fun_expr([
         erl_syntax:clause(
-              [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),ConditionVar]),AccVar],
+              [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar]),AccVar],
             [],
             [erl_syntax:cons(SrcVar, erl_syntax:list([DstVar,AccVar]))])
     ]),
@@ -990,7 +1034,7 @@ generate_all_states() ->
     FoldExpression = erl_syntax:application(
         erl_syntax:atom(lists),
         erl_syntax:atom(foldl),
-        [FoldBody,erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[SysInfoVar])]),
+        [FoldBody,erl_syntax:list([]), SysInfoVar]),
 
     StateAssignment = erl_syntax:infix_expr(StatesVar,erl_syntax:operator('='),FoldExpression),
 
@@ -1063,6 +1107,7 @@ generate_reachable_state_function()->
     TransitionsVar = erl_syntax:variable('StateTransitionTable'),
     SrcVar = erl_syntax:variable('Src'),
     DstVar = erl_syntax:variable('Dst'),
+    EventSpecVar = erl_syntax:variable('_EventSpec'),
     ConditionVar = erl_syntax:variable('Condition'),
     AccVar = erl_syntax:variable('Acc'),
 
@@ -1099,13 +1144,13 @@ generate_reachable_state_function()->
     % For Fold Expression 
     FoldBody = erl_syntax:fun_expr([
         erl_syntax:clause(
-            [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),ConditionVar]),AccVar],
+            [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar]),AccVar],
             [],
             [CaseExpression])
     ]),
 
     FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-                                [FoldBody, erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
+                                [FoldBody, erl_syntax:list([]), TransitionsVar]
                                 ),
 
     [erl_syntax:function(
@@ -1126,6 +1171,7 @@ generate_reachable_state_from_state() ->
     TransitionsVar = erl_syntax:variable('StateTransitionTable'),
     SrcVar = erl_syntax:variable('Src'),
     DstVar = erl_syntax:variable('Dst'),
+    EventSpecVar = erl_syntax:variable('_EventSpec'),
     ConditionVar = erl_syntax:variable('_Condition'),
     AccVar = erl_syntax:variable('Acc'),
 
@@ -1150,13 +1196,13 @@ generate_reachable_state_from_state() ->
 
     FoldBody = erl_syntax:fun_expr([
         erl_syntax:clause(
-            [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),ConditionVar]),AccVar],
+            [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar]),AccVar],
             [],
             [IfExpression])
     ]),
 
     FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-                            [FoldBody, erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
+                            [FoldBody, erl_syntax:list([]), TransitionsVar]
                             ),
                [erl_syntax:function(
     
@@ -1178,6 +1224,7 @@ generate_preceeding_states_from_state_function() ->
     TransitionsVar = erl_syntax:variable('StateTransitionTable'),
     SrcVar = erl_syntax:variable('Src'),
     DstVar = erl_syntax:variable('Dst'),
+    EventSpecVar = erl_syntax:variable('_EventSpec'),
     ConditionVar = erl_syntax:variable('_Condition'),
     AccVar = erl_syntax:variable('Acc'),
 
@@ -1203,13 +1250,13 @@ generate_preceeding_states_from_state_function() ->
 
     FoldBody = erl_syntax:fun_expr([
         erl_syntax:clause(
-            [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),ConditionVar]),AccVar],
+            [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar]),AccVar],
             [],
             [IfExpression])
     ]),
 
     FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-                            [FoldBody, erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
+                            [FoldBody, erl_syntax:list([]), TransitionsVar]
                             ),
     
     [erl_syntax:function(
@@ -1267,78 +1314,6 @@ generate_preceeding_states_from_event_function()->
         ]
     )].
 
-% % validate_state_transition/2
-% generate_deduce_event_function()->
-%     % vars
-%     ParamCurrentState = erl_syntax:variable('CurrentState'),
-%     ParamNextState  = erl_syntax:variable('NextState'),
-%     TransitionsVar = erl_syntax:variable('StateTransitionTable'),
-%     SrcVar = erl_syntax:variable('Src'),
-%     DstVar = erl_syntax:variable('Dst'),
-%     EventVar = erl_syntax:variable('Event'),
-%     AccVar = erl_syntax:variable('Acc'),
-
-
-%     TransitionsAssignment = erl_syntax:infix_expr(
-%         TransitionsVar,
-%         erl_syntax:operator('='),
-%         erl_syntax:application(erl_syntax:atom(init_transitions),[])
-%         ),
-
-%     % For Case Expression
-%     CaseConditionUndefBody = erl_syntax:tuple([erl_syntax:atom(ok),EventVar]),
-%     CaseConditionNonDetBody = erl_syntax:tuple([erl_syntax:atom(error),erl_syntax:atom(non_deterministic)]),
-
-%     CaseExpression = erl_syntax:case_expr(
-%         AccVar,
-%         [
-%             erl_syntax:clause(
-%                 [erl_syntax:atom(undefined)],
-%                 [],
-%                 [CaseConditionUndefBody]
-%             ),
-%             erl_syntax:clause(
-%                 [erl_syntax:tuple([erl_syntax:atom(ok),erl_syntax:underscore()])],
-%                 [],
-%                 [CaseConditionNonDetBody]
-%             )
-%             ]
-%         ),
-
-%     IfClauseMatch = 
-%         erl_syntax:clause([],
-%         [erl_syntax:infix_expr(erl_syntax:infix_expr(SrcVar,erl_syntax:operator('=:='),ParamCurrentState),erl_syntax:operator('andalso'),erl_syntax:infix_expr(DstVar,erl_syntax:operator('=:='),ParamNextState))],
-%         [CaseExpression]),
-
-%     IfClauseNoMatch = 
-%         erl_syntax:clause([],
-%         [erl_syntax:atom(true)],
-%         [AccVar]),
-
-%     IfExpression = erl_syntax:if_expr([IfClauseMatch,IfClauseNoMatch]),
-
-%     FoldBody = erl_syntax:fun_expr([
-%         erl_syntax:clause(
-%             [erl_syntax:tuple([erl_syntax:tuple([SrcVar, DstVar]),EventVar]),AccVar],
-%             [],
-%             [IfExpression])
-%     ]),
-
-%     FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-%                     [FoldBody, erl_syntax:atom(undefined), erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(to_list),[TransitionsVar])]
-%                             ),
-
-%        [erl_syntax:function(
-%         erl_syntax:atom(validate_state_transition),
-%         [
-%             erl_syntax:clause(
-%                 [ParamCurrentState,ParamNextState],
-%                 [],
-%                 [TransitionsAssignment,FoldExpression]
-%             )
-%         ]
-%     )].         
-
 % validate_state_transition/2
 generate_validate_state_transition()->
 
@@ -1348,9 +1323,8 @@ generate_validate_state_transition()->
     TransitionsVar = erl_syntax:variable('StateTransitionTable'),
     SrcVar = erl_syntax:variable('Src'),
     DstVar = erl_syntax:variable('Dst'),
-    EventVar = erl_syntax:variable('Event'),
-    AccVar = erl_syntax:variable('Acc'),
-
+    EventSpecVar = erl_syntax:variable('_EventSpec'),
+    ConditionVar = erl_syntax:variable('_Condition'),
 
     TransitionsAssignment = erl_syntax:infix_expr(
         TransitionsVar,
@@ -1358,33 +1332,41 @@ generate_validate_state_transition()->
         erl_syntax:application(erl_syntax:atom(init_transitions),[])
         ),
 
-        CaseCondition = erl_syntax:application(erl_syntax:atom(maps),erl_syntax:atom(is_key), [erl_syntax:tuple([ParamCurrentState,ParamNextState]),TransitionsVar]),
+    SourceMatches = erl_syntax:infix_expr(
+        SrcVar,
+        erl_syntax:operator('=:='),
+        ParamCurrentState
+    ),
+    DestinationMatches = erl_syntax:infix_expr(
+        DstVar,
+        erl_syntax:operator('=:='),
+        ParamNextState
+    ),
+    TransitionMatches = erl_syntax:infix_expr(
+        SourceMatches,
+        erl_syntax:operator('andalso'),
+        DestinationMatches
+    ),
+    MatchFun = erl_syntax:fun_expr([
+        erl_syntax:clause(
+            [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar])],
+            [],
+            [TransitionMatches]
+        )
+    ]),
+    AnyMatchingTransition = erl_syntax:application(
+        erl_syntax:atom(lists),
+        erl_syntax:atom(any),
+        [MatchFun, TransitionsVar]
+    ),
 
-    CaseExpression = erl_syntax:case_expr(
-            CaseCondition,
-            [
-                erl_syntax:clause(
-                    [erl_syntax:atom(true)],
-                    [],
-                    [erl_syntax:atom(true)]
-                ),
-                erl_syntax:clause(
-                    [erl_syntax:atom(false)],
-                    [],
-                    [erl_syntax:atom(false)]
-                )
-                ]
-            ),
-
-
-
-        [erl_syntax:function(
+    [erl_syntax:function(
         erl_syntax:atom(validate_state_transition),
         [
             erl_syntax:clause(
                 [ParamCurrentState,ParamNextState],
                 [],
-                [TransitionsAssignment,CaseExpression]
+                [TransitionsAssignment,AnyMatchingTransition]
             )
         ]
     )].         

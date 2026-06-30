@@ -69,7 +69,7 @@ Plans:
 **Plans:** TBD
 
 Plans:
-- [ ] 04-01: Preserve transition multiplicity in generated system-information data.
+- [x] 04-01: Preserve transition multiplicity in generated system-information data.
 - [ ] 04-02: Replace current transition validation with singleton deduction.
 - [ ] 04-03: Add tests for unique, ambiguous, impossible, and symbolic missing-event cases.
 
@@ -332,7 +332,7 @@ Plans:
 | 1. Test Harness Baseline | v0.1 | 3/3 | Complete | 2026-06-24 |
 | 2. Parser Contract Alignment | v0.1 | 2/2 | Complete | 2026-06-24 |
 | 3. Generated Monitor Compile Correctness | v0.1 | 2/2 | Complete | 2026-06-26 |
-| 4. Sound AGM State Regeneration | v0.1 | 0/3 | Not started | - |
+| 4. Sound AGM State Regeneration | v0.1 | 1/3 | In progress | - |
 | 5. Irrevocability and Verdict Semantics | v0.1 | 0/3 | Not started | - |
 | 6. Specification Grammar Definition | v0.2 | 0/2 | Planned | - |
 | 7. Parser Error Model | v0.2 | 0/3 | Planned | - |

@@ -37,6 +37,7 @@ compile_generated_monitor(PropFile, TmpDir) ->
     ErlFiles = lists:sort(filelib:wildcard(filename:join(PropOutDir, "*.erl"))),
     ?assert(length(ErlFiles) >= 2),
     assert_no_zero_arity_state_update(ErlFiles),
+    assert_transition_helpers_use_list_rows(ErlFiles),
 
     CompileResults = [
         compile:file(
@@ -58,6 +59,16 @@ assert_no_zero_arity_state_update(ErlFiles) ->
         fun(File) ->
             {ok, Source} = file:read_file(File),
             ?assertEqual(nomatch, binary:match(Source, <<"update_current_state()">>))
+        end,
+        ErlFiles
+    ).
+
+assert_transition_helpers_use_list_rows(ErlFiles) ->
+    lists:foreach(
+        fun(File) ->
+            {ok, Source} = file:read_file(File),
+            ?assertEqual(nomatch, binary:match(Source, <<"maps:to_list(StateTransitionTable)">>)),
+            ?assertEqual(nomatch, binary:match(Source, <<"maps:is_key">>))
         end,
         ErlFiles
     ).
