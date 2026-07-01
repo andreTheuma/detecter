@@ -48,7 +48,6 @@
 %%% Implemented behaviors.
 -behavior(gen_eval).
 
-
 %%% ----------------------------------------------------------------------------
 %%% Macro and record definitions.
 %%% ----------------------------------------------------------------------------
@@ -122,16 +121,19 @@
 -type line() :: erl_anno:line().
 %% Line number in source.
 
--type with() :: {with, line(), gen_eval:af_mfargs()} |
-{with, line(), gen_eval:af_mfargs(), gen_eval:af_constraint()}.
+-type with() ::
+    {with, line(), gen_eval:af_mfargs()} |
+    {with, line(), gen_eval:af_mfargs(), gen_eval:af_constraint()}.
 %% Process instrumentation selection MFArgs.
 
 -type spec() :: {spec, line(), with(), af_maxhml()}.
 %% Instrumentation specification abstract form.
 
--type af_maxhml() :: af_hml_tt() | af_hml_ff() | af_hml_pos() | af_hml_nec() |
-af_hml_or() | af_hml_and() |
-af_hml_max() | af_hml_var().
+-type af_maxhml() ::
+    af_hml_tt() | af_hml_ff() |
+    af_hml_pos() | af_hml_nec() |
+    af_hml_or() | af_hml_and() |
+    af_hml_max() | af_hml_var().
 %% maxHML formulae abstract form.
 
 -type af_hml_ff() :: {ff, line()}.
@@ -143,8 +145,6 @@ af_hml_max() | af_hml_var().
 -type af_hml_max() :: {max, line(), af_hml_var(), af_maxhml()}.
 -type af_hml_var() :: {var, line(), atom()}.
 %% HML formulae abstract form.
-
-
 
 %%% ----------------------------------------------------------------------------
 %%% Public API.
@@ -188,14 +188,14 @@ generate_verdict_function({Vrd, _}, _Opts) ->
 -spec generate_function(Node, Opts) -> erl_syntax:syntaxTree() when
     Node :: af_maxhml(),
     Opts :: opts:options().
-generate_function(Node = {Vrd, LineNumber}, _Opts) when
+generate_function(_Node = {Vrd, _LineNumber}, _Opts) when
     Vrd =:= ?HML_TRU; Vrd =:= ?HML_FLS
 ->
     [];
 generate_function(Var = {?HML_VAR, _, _Name}, _Opts) ->
 
     ?TRACE("Generating function for 'var' node ~p. ~n ", [_Name]),
-    FunctionName = generate_function_name(Var),
+    _FunctionName = generate_function_name(Var),
     % FunctionArgs = lists:usort(
     %     lists:flatten([[erl_syntax:variable(V) || V <- generate_function_args(Var, [])]])
     % ),
@@ -203,7 +203,7 @@ generate_function(Var = {?HML_VAR, _, _Name}, _Opts) ->
     % [erl_syntax:function(erl_syntax:atom(FunctionName), [  erl_syntax:clause([], none, [erl_syntax:atom(?MON_VAR)])])];
     [];
 
-generate_function(Node = {?HML_MAX, LineNumber, Var = {?HML_VAR, _, _}, Phi}, _Opts) ->
+generate_function(Node = {?HML_MAX, LineNumber, _Var = {?HML_VAR, _, _}, Phi}, _Opts) ->
     
     FunctionName = generate_function_name(Node),
     ?TRACE("Generating function ~p for 'max' node from src line ~p. ~n ", [FunctionName,LineNumber]),
@@ -245,9 +245,9 @@ generate_function(
     OuterNode =
         {?HML_AND, _,
             InnerLeftNode =
-                {ModLeft, _, PhiLeftNode = {_, LineNumberLeft, PatPhiLeft, GuardPhiLeft}, PsiLeft},
+                {ModLeft, _, _PhiLeftNode = {_, LineNumberLeft, PatPhiLeft, GuardPhiLeft}, PsiLeft},
             InnerRightNode =
-                {ModRight, _, PhiRightNode = {_, LineNumberRight, PatPhiRight, GuardPhiRight},
+                {ModRight, _, _PhiRightNode = {_, LineNumberRight, PatPhiRight, GuardPhiRight},
                     PsiRight}},
     _Opts
 ) when ModLeft =:= ?HML_NEC; ModRight =:= ?HML_POS; ModRight =:= ?HML_NEC; ModLeft =:=?HML_POS ->
@@ -340,7 +340,7 @@ generate_function(
             end
     ),
 
-    ReductionFun = generate_monitor_reduction_fun([
+    ReductionFun = maxhml_agm_codegen:generate_monitor_reduction_fun([
         {
             ModLeft,
             PatPhiLeft,
@@ -358,7 +358,8 @@ generate_function(
             PsiRightFunctionArgs
         }
     ]),
-    CaseExpression = generate_missing_event_recovery_case(ReductionFun),
+    CaseExpression =
+        maxhml_agm_codegen:generate_missing_event_recovery_case(ReductionFun),
 
     MissingEventClause = erl_syntax:clause(
         [gen_eval:pat_tuple({missing_event})],
@@ -414,7 +415,7 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
         [erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedVars])),erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
     ),
 
-    ReductionFun = generate_monitor_reduction_fun([
+    ReductionFun = maxhml_agm_codegen:generate_monitor_reduction_fun([
         {
             ?HML_NEC,
             Pat,
@@ -424,7 +425,8 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
             NextFunctionArgs
         }
     ]),
-    CaseExpression = generate_missing_event_recovery_case(ReductionFun),
+    CaseExpression =
+        maxhml_agm_codegen:generate_missing_event_recovery_case(ReductionFun),
 
     MissingEventClause = erl_syntax:clause(
         [gen_eval:pat_tuple({missing_event})],
@@ -461,456 +463,17 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
 
     [Function | lists:flatten([generate_function(Phi, _Opts)])].
 
-generate_missing_event_recovery_case(ReductionFun) ->
-    RecoveryVar = erl_syntax:variable('Recovery'),
-    RecoveryReasonVar = erl_syntax:variable('RecoveryReason'),
-    ConsequenceReasonVar = erl_syntax:variable('ConsequenceReason'),
-    ContinuationVar = erl_syntax:variable('Continuation'),
-
-    ConsequenceCase = erl_syntax:case_expr(
-        erl_syntax:application(
-            erl_syntax:atom(resolve_monitoring_consequence),
-            [RecoveryVar, ReductionFun]
-        ),
-        [
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    erl_syntax:map_expr([
-                        erl_syntax:map_field_exact(
-                            erl_syntax:atom(continuation),
-                            ContinuationVar
-                        )
-                    ])
-                ])],
-                [],
-                [erl_syntax:application(ContinuationVar, [])]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    ConsequenceReasonVar
-                ])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    ConsequenceReasonVar
-                ])]
-            )
-        ]
-    ),
-
-    erl_syntax:case_expr(
-        erl_syntax:application(
-            erl_syntax:atom(handle_missing_event),
-            [erl_syntax:variable('From')]
-        ),
-        [
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    RecoveryVar
-                ])],
-                [],
-                [ConsequenceCase]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    RecoveryReasonVar
-                ])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    RecoveryReasonVar
-                ])]
-            )
-        ]
-    ).
-
-generate_monitor_reduction_fun(Branches) ->
-    SupportedModalities = lists:all(
-        fun({Mod, _, _, _, _, _}) -> Mod =:= ?HML_NEC end,
-        Branches
-    ),
-    ActionTypes = lists:usort([
-        element(1, Pat)
-        || {_, Pat, _, _, _, _} <- Branches
-    ]),
-    StateUpdateArgs = [
-        generate_state_update_args(Pat)
-        || {_, Pat, _, _, _, _} <- Branches
-    ],
-    SupportedStateArgs = lists:all(
-        fun(Args) -> length(Args) =:= 1 end,
-        StateUpdateArgs
-    ),
-
-    case SupportedModalities
-        andalso length(ActionTypes) =:= 1
-        andalso SupportedStateArgs
-    of
-        true ->
-            generate_supported_monitor_reduction_fun(
-                Branches,
-                StateUpdateArgs
-            );
-        false ->
-            generate_unknown_monitor_reduction_fun(
-                unsupported_monitor_pattern
-            )
-    end.
-
-generate_supported_monitor_reduction_fun(Branches, StateUpdateArgs) ->
-    MissingEventVar = erl_syntax:variable('MissingEvent'),
-    LiteralClauses = lists:zipwith(
-        fun generate_literal_monitor_reduction_clause/2,
-        Branches,
-        StateUpdateArgs
-    ),
-    SymbolicClauses = generate_symbolic_monitor_reduction_clauses(
-        Branches,
-        StateUpdateArgs
-    ),
-    LiteralCase = erl_syntax:case_expr(
-        MissingEventVar,
-        LiteralClauses ++ [
-            erl_syntax:clause(
-                [erl_syntax:underscore()],
-                [],
-                [unknown_monitor_reduction(unmatched_literal)]
-            )
-        ]
-    ),
-
-    erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [erl_syntax:tuple([
-                erl_syntax:atom(literal),
-                MissingEventVar
-            ])],
-            [],
-            [LiteralCase]
-        )
-        | SymbolicClauses
-    ] ++ [
-        erl_syntax:clause(
-            [erl_syntax:underscore()],
-            [],
-            [unknown_monitor_reduction(unsupported_event_spec)]
-        )
-    ]).
-
-generate_literal_monitor_reduction_clause(
-    {_, _, Guard, Phi, NextFunctionName, NextFunctionArgs},
-    [EventPattern]
-) ->
-    erl_syntax:clause(
-        [EventPattern],
-        Guard,
-        [successful_monitor_reduction(
-            Phi,
-            NextFunctionName,
-            NextFunctionArgs
-        )]
-    ).
-
-successful_monitor_reduction(Phi, NextFunctionName, NextFunctionArgs) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(ok),
-        erl_syntax:list([
-            monitor_reduction_pair(
-                Phi,
-                NextFunctionName,
-                NextFunctionArgs
-            )
-        ])
-    ]).
-
-monitor_reduction_pair(Phi, NextFunctionName, NextFunctionArgs) ->
-    Signature =
-        case Phi of
-            {?HML_TRU, _} ->
-                erl_syntax:tuple([
-                    erl_syntax:atom(verdict),
-                    erl_syntax:atom(?MON_ACC)
-                ]);
-            {?HML_FLS, _} ->
-                erl_syntax:tuple([
-                    erl_syntax:atom(verdict),
-                    erl_syntax:atom(?MON_REJ)
-                ]);
-            _ ->
-                erl_syntax:tuple([
-                    erl_syntax:atom(continue),
-                    erl_syntax:atom(NextFunctionName),
-                    erl_syntax:list(NextFunctionArgs)
-                ])
-        end,
-    Continuation = erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [],
-            [],
-            [erl_syntax:application(
-                erl_syntax:atom(NextFunctionName),
-                NextFunctionArgs
-            )]
-        )
-    ]),
-
-    erl_syntax:tuple([
-        Signature,
-        Continuation
-    ]).
-
-generate_symbolic_monitor_reduction_clauses(
-    [{_, _, [], Phi, NextFunctionName, NextFunctionArgs}],
-    [[EventPattern]]
-) ->
-    case consequence_depends_on_event(EventPattern, NextFunctionArgs) of
-        true ->
-            [];
-        false ->
-            SymbolicReduction = successful_monitor_reduction(
-                Phi,
-                NextFunctionName,
-                NextFunctionArgs
-            ),
-            symbolic_event_spec_clauses(
-                fun(_) -> SymbolicReduction end
-            )
-    end;
-generate_symbolic_monitor_reduction_clauses(Branches, StateUpdateArgs) ->
-    case classify_complementary_event_guards(
-        Branches,
-        StateUpdateArgs
-    ) of
-        {ok, EqualBranch, NotEqualBranch, ComparedValue} ->
-            symbolic_event_spec_clauses(
-                fun(EventSpec) ->
-                    generate_symbolic_membership_case(
-                        EventSpec,
-                        ComparedValue,
-                        EqualBranch,
-                        NotEqualBranch
-                    )
-                end
-            );
-        unsupported ->
-            []
-    end.
-
-symbolic_event_spec_clauses(BodyFun) ->
-    RangeVar = erl_syntax:variable('SymbolicRange'),
-    ExcludedVar = erl_syntax:variable('Excluded'),
-    TwoFieldSpec = erl_syntax:tuple([
-        erl_syntax:atom(symbolic),
-        RangeVar
-    ]),
-    ThreeFieldSpec = erl_syntax:tuple([
-        erl_syntax:atom(symbolic),
-        RangeVar,
-        ExcludedVar
-    ]),
-
-    [
-        erl_syntax:clause(
-            [TwoFieldSpec],
-            [],
-            [BodyFun(TwoFieldSpec)]
-        ),
-        erl_syntax:clause(
-            [ThreeFieldSpec],
-            [],
-            [BodyFun(ThreeFieldSpec)]
-        )
-    ].
-
-classify_complementary_event_guards(Branches, StateUpdateArgs) ->
-    Classified = lists:zipwith(
-        fun(Branch = {_, _, Guard, _, _, _}, [EventPattern]) ->
-            case classify_event_guard(
-                Guard,
-                erl_syntax:variable_name(EventPattern)
-            ) of
-                {ok, Operator, ComparedValue} ->
-                    {
-                        Operator,
-                        ComparedValue,
-                        Branch,
-                        EventPattern
-                    };
-                unsupported ->
-                    unsupported
-            end
-        end,
-        Branches,
-        StateUpdateArgs
-    ),
-    Equal = lists:keyfind('=:=', 1, Classified),
-    NotEqual = lists:keyfind('=/=', 1, Classified),
-
-    case {Equal, NotEqual, length(Classified)} of
-        {
-            {'=:=', EqualValue, EqualBranch, EqualEventPattern},
-            {'=/=', NotEqualValue, NotEqualBranch, NotEqualEventPattern},
-            2
-        } ->
-            EqualArgs = element(6, EqualBranch),
-            NotEqualArgs = element(6, NotEqualBranch),
-            case guard_operands_equal(EqualValue, NotEqualValue)
-                andalso not consequence_depends_on_event(
-                    EqualEventPattern,
-                    EqualArgs
-                )
-                andalso not consequence_depends_on_event(
-                    NotEqualEventPattern,
-                    NotEqualArgs
-                )
-            of
-                true ->
-                    {
-                        ok,
-                        EqualBranch,
-                        NotEqualBranch,
-                        EqualValue
-                    };
-                false ->
-                    unsupported
-            end;
-        _ ->
-            unsupported
-    end.
-
-classify_event_guard(
-    [[{op, _, Operator, Left, Right}]],
-    EventVariable
-) when Operator =:= '=:=';
-       Operator =:= '=/=' ->
-    case {
-        is_guard_event_variable(Left, EventVariable),
-        is_guard_event_variable(Right, EventVariable)
-    } of
-        {true, false} ->
-            {ok, Operator, Right};
-        {false, true} ->
-            {ok, Operator, Left};
-        _ ->
-            unsupported
-    end;
-classify_event_guard(_, _) ->
-    unsupported.
-
-is_guard_event_variable({var, _, Variable}, Variable) ->
-    true;
-is_guard_event_variable(_, _) ->
-    false.
-
-guard_operands_equal({var, _, Left}, {var, _, Right}) ->
-    Left =:= Right;
-guard_operands_equal({integer, _, Left}, {integer, _, Right}) ->
-    Left =:= Right;
-guard_operands_equal({atom, _, Left}, {atom, _, Right}) ->
-    Left =:= Right;
-guard_operands_equal(_, _) ->
-    false.
-
-consequence_depends_on_event(EventPattern, NextFunctionArgs) ->
-    EventVariable = erl_syntax:variable_name(EventPattern),
-    lists:any(
-        fun(Arg) ->
-            erl_syntax:type(Arg) =:= variable
-                andalso erl_syntax:variable_name(Arg) =:= EventVariable
-        end,
-        NextFunctionArgs
-    ).
-
-generate_symbolic_membership_case(
-    EventSpec,
-    ComparedValue,
-    EqualBranch,
-    NotEqualBranch
-) ->
-    BothReductions = successful_monitor_reductions([
-        EqualBranch,
-        NotEqualBranch
-    ]),
-    NotEqualReduction = successful_monitor_reductions([
-        NotEqualBranch
-    ]),
-
-    erl_syntax:case_expr(
-        erl_syntax:application(
-            erl_syntax:atom(event_spec_membership),
-            [EventSpec, ComparedValue]
-        ),
-        [
-            erl_syntax:clause(
-                [erl_syntax:atom(true)],
-                [],
-                [BothReductions]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:atom(false)],
-                [],
-                [NotEqualReduction]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:atom(unknown)],
-                [],
-                [unknown_monitor_reduction(
-                    unsupported_symbolic_guard
-                )]
-            )
-        ]
-    ).
-
-successful_monitor_reductions(Branches) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(ok),
-        erl_syntax:list([
-            monitor_reduction_pair(
-                Phi,
-                NextFunctionName,
-                NextFunctionArgs
-            )
-            || {
-                _,
-                _,
-                _,
-                Phi,
-                NextFunctionName,
-                NextFunctionArgs
-            } <- Branches
-        ])
-    ]).
-
-generate_unknown_monitor_reduction_fun(Reason) ->
-    erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [erl_syntax:underscore()],
-            [],
-            [unknown_monitor_reduction(Reason)]
-        )
-    ]).
-
-unknown_monitor_reduction(Reason) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(unknown),
-        erl_syntax:atom(Reason)
-    ]).
-
 %% @public Generates the receive block for the function look up. This
 %% is the entry point for the look up of the function to be executed.
 -spec generate_init_block(Node, _Opts) -> erl_syntax:syntaxTree() when
     Node :: af_maxhml(),
     _Opts :: opts:options().
-generate_init_block(OuterNode =
+generate_init_block(_OuterNode =
         {?HML_AND, _,
-            InnerLeftNode =
-                {ModLeft, _, PhiLeftNode = {_, LineNumberLeft, PatPhiLeft = {init, _, LeftPhiPid2, LeftPhiPid, LeftPhiMFArgs}, GuardPhiLeft}, PsiLeft},
-            InnerRightNode =
-                {ModRight, _, PhiRightNode = {_, LineNumberRight, PatPhiRight = {init, _, RightPhiPid2, RightPhiPid, RightPhiMFArgs}, GuardPhiRight},
+            _InnerLeftNode =
+                {_ModLeft, _, _PhiLeftNode = {_, LineNumberLeft, PatPhiLeft = {init, _, _LeftPhiPid2, _LeftPhiPid, _LeftPhiMFArgs}, GuardPhiLeft}, PsiLeft},
+            _InnerRightNode =
+                {_ModRight, _, _PhiRightNode = {_, LineNumberRight, PatPhiRight = {init, _, _RightPhiPid2, _RightPhiPid, _RightPhiMFArgs}, GuardPhiRight},
                     PsiRight}},
     _Opts) ->
 
@@ -973,7 +536,7 @@ generate_init_block(OuterNode =
 
     lists:flatten([EtsInitExpr,EtsInsertCurrentState,EtsInsertPreviousState,ReceiveExpr]);
 
-generate_init_block({Mod, _, {act, _, Pat = {init, _, Pid2, Pid, MFArgs}, Guard}, Phi}, _Opts) when Mod =:= ?HML_NEC; Mod =:= ?HML_POS->
+generate_init_block({Mod, _, {act, _, Pat = {init, _, _Pid2, _Pid, _MFArgs}, Guard}, Phi}, _Opts) when Mod =:= ?HML_NEC; Mod =:= ?HML_POS->
     ?TRACE("Generating init block for ~p node. ~n", [Mod]),
 
     NextFunctionName = generate_function_name(Phi),
@@ -1160,12 +723,12 @@ is_state_update_var(Var) ->
 %%% @private Generates the function name for the given node.
 -spec generate_function_name(Node) -> atom() when
     Node :: af_maxhml().
-generate_function_name({?HML_VAR, LineNumber, Name}) ->
+generate_function_name({?HML_VAR, _LineNumber, Name}) ->
     list_to_atom(string:lowercase(atom_to_list(Name)));
-generate_function_name(Node = {?HML_MAX, LineNumber, Var = {_, _, Name}, _}) ->
+generate_function_name(_Node = {?HML_MAX, _LineNumber, Var = {_, _, _Name}, _}) ->
     generate_function_name(Var);
 generate_function_name(
-    {?HML_AND, _, Phi = {_, PhiLineNumber, PhiPat, _}, Psi = {_, PsiLineNumber, PsiPat, _}}
+    {?HML_AND, _, _Phi = {_, PhiLineNumber, PhiPat, _}, _Psi = {_, PsiLineNumber, PsiPat, _}}
 ) ->
 
     Action1 = element(1, element(3, PhiPat)),
@@ -1174,7 +737,7 @@ generate_function_name(
         (string:lowercase(atom_to_list(Action1)) ++ integer_to_list(PhiLineNumber)) ++
             string:lowercase(atom_to_list(Action2) ++ integer_to_list(PsiLineNumber))
     );
-generate_function_name({?HML_NEC, NecLineNumber, {_, PhiLineNumber, Pat, _}, _}) ->
+generate_function_name({?HML_NEC, _NecLineNumber, {_, PhiLineNumber, Pat, _}, _}) ->
     Action = element(1, Pat),
     list_to_atom(atom_to_list(Action) ++ integer_to_list(PhiLineNumber));
 generate_function_name({Verdict, _}) when Verdict =:= ?HML_TRU; Verdict =:= ?HML_FLS ->
@@ -1187,19 +750,19 @@ generate_function_name({Verdict, _}) when Verdict =:= ?HML_TRU; Verdict =:= ?HML
 -spec generate_function_args(Node, BoundVars) -> [erl_syntax:syntaxTree()] when
     Node :: af_maxhml(),
     BoundVars :: [atom()].
-generate_function_args(Node = {?HML_VAR, LineNumber, Name}, _BoundVars) ->
+generate_function_args(Node = {?HML_VAR, _LineNumber, Name}, _BoundVars) ->
     % Recursive variable encountered; no further recursion
     ?TRACE("Searching for function arguments for 'var' node ~p.~n", [Name]),
     persistent_term:get(generate_function_name(Node), []);
     % _BoundVars;
     
-generate_function_args(Node = {?HML_MAX, _, {?HML_VAR, _, Name}, Phi}, BoundVars) ->
+generate_function_args(_Node = {?HML_MAX, _, {?HML_VAR, _, _Name}, Phi}, BoundVars) ->
     % `max X` recursive construct, recursively process Phi
     generate_function_args(Phi, BoundVars);
 
 generate_function_args(
-    OuterNode = {?HML_AND, _, 
-        InnerLeftNode = {nec, _, {_, _, PatPhi, GuardPhi}, Psi}, InnerRightNode}, BoundVars
+    _OuterNode = {?HML_AND, _,
+        InnerLeftNode = {nec, _, {_, _, _PatPhi, _GuardPhi}, _Psi}, InnerRightNode}, BoundVars
 ) ->
     % `and` compound node with `nec` on the left
     % Extract variables from guard and pattern, treat them as bound in this scope
@@ -1227,1230 +790,20 @@ generate_function_args({Verdict, _}, _BoundVars) when Verdict =:= ?HML_TRU; Verd
     ["From"].
 
 %%% ----------------------------------------------------------------------------
-%%% System Info functions
-%%% 
-%%% refer to module sys_info_parser
+%%% AGM code-generation callbacks.
 %%% ----------------------------------------------------------------------------
 
-% init_transitions/0
 generate_sys_info_function(Opts) ->
-    SourceFile = opts:monitor_table_opt(Opts),
-    SysInfo = sys_info_parser:parse_file(SourceFile),
-    Transitions = generate_sys_info_transition(SysInfo),
-    [erl_syntax:function(
-        erl_syntax:atom(init_transitions),
-        [
-            erl_syntax:clause(
-                [],
-                [],
-                [Transitions]
-            )
-        ]
-    )].
+    maxhml_agm_codegen:generate_sys_info_function(Opts).
 
-generate_sys_info_transition(TransitionList)->
-    Rows = lists:map(fun sys_info_to_transition/1, TransitionList),
-    erl_syntax:list(Rows).
-
-sys_info_to_transition({Source, EventTuple, Destination}) ->
-
-    EventSpecAST = generate_sys_info_event_spec(EventTuple),
-    ConditionAST = generate_sys_info_event_condition(EventTuple),
-
-    erl_syntax:tuple([
-        erl_syntax:atom(Source),
-        erl_syntax:atom(Destination),
-        EventSpecAST,
-        ConditionAST
-    ]).
-    
-
-generate_sys_info_event_spec({is_integer, Event}) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(literal),
-        erl_syntax:integer(Event)
-    ]);
-generate_sys_info_event_spec({atom, Event}) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(literal),
-        erl_syntax:atom(Event)
-    ]);
-generate_sys_info_event_spec({{'fun', null}, []}) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(literal),
-        erl_syntax:atom(null)
-    ]);
-generate_sys_info_event_spec({{'fun', is_natural_integer}, []}) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(symbolic),
-        erl_syntax:atom(natural_integer)
-    ]);
-generate_sys_info_event_spec({{'fun', is_any_integer}, []}) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(symbolic),
-        erl_syntax:atom(any_integer)
-    ]);
-generate_sys_info_event_spec({{'fun', is_real_number}, []}) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(symbolic),
-        erl_syntax:atom(real_number)
-    ]);
-generate_sys_info_event_spec(
-    {{'fun', is_any_integer}, [setminus | {is_integer, ExcludedEvent}]}
-) ->
-    erl_syntax:tuple([
-        erl_syntax:atom(symbolic),
-        erl_syntax:atom(any_integer_except),
-        erl_syntax:integer(ExcludedEvent)
-    ]).
-
-generate_sys_info_event_condition({is_integer, EventPayload}) ->
-    EventBody = erl_syntax:infix_expr(
-        erl_syntax:variable("Event"),
-        erl_syntax:operator('=:='),
-        erl_syntax:integer(EventPayload)
-    ),
-    erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [erl_syntax:variable("Event")],
-            [],
-            [EventBody]
-        )
-    ]);
-
-generate_sys_info_event_condition({atom, EventPayload}) ->
-    EventBody = erl_syntax:infix_expr(
-        erl_syntax:variable("Event"),
-        erl_syntax:operator('=:='),
-        erl_syntax:atom(EventPayload)
-    ),
-    erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [erl_syntax:variable("Event")],
-            [],
-            [EventBody]
-        )
-    ]);
-
-generate_sys_info_event_condition({{'fun', EventPayload}, AdditionalGuards}) ->
-    EventVar = erl_syntax:variable("Event"),
-    EventBody = generate_sys_info_guard(EventPayload, AdditionalGuards),
-    erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [EventVar],
-            [],
-            [EventBody]
-        )
-    ]).
-
-generate_sys_info_guard(EventPayload, AdditionalGuards) ->
-    EventVar = erl_syntax:variable("Event"),
-    
-    % Generate general guards 
-    IsIntegerGuard = erl_syntax:application(
-        erl_syntax:atom(is_integer),
-        [EventVar]
-    ),
-
-    IsRealGuard = erl_syntax:application(
-        erl_syntax:atom(is_number),
-        [EventVar]
-    ),
-
-    MainGuard = case EventPayload of 
-
-            null ->
-                erl_syntax:infix_expr(
-                    EventVar,
-                    erl_syntax:operator('=:='),
-                    erl_syntax:atom(null)
-                );
-        
-            is_natural_integer -> 
-                
-                NaturalIntegerGuard = erl_syntax:infix_expr(
-                    EventVar,
-                    erl_syntax:operator(">"),
-                    erl_syntax:integer(0)
-                ),
-
-                CombinedGuard = erl_syntax:infix_expr(
-                    IsIntegerGuard,
-                    erl_syntax:operator("andalso"),
-                    NaturalIntegerGuard
-                ),
-
-                CombinedGuard;
-
-                % TODO: SORT OUT THE OTHER GUARDS
-            is_any_integer -> IsIntegerGuard;
-            
-            is_real_number -> IsRealGuard
-        end,
-
-        case AdditionalGuards of 
-            [Operator | {GuardPayloadType, GuardPayload} ] ->
-                io:format("Operator Guards ~p~n", [Operator]),
-                io:format("Payload Guards ~p~n", [GuardPayload]),
-                AdditionalGuard = 
-                    case Operator of
-                        setminus ->
-                            erl_syntax:infix_expr(
-                                EventVar,
-                                erl_syntax:operator("=/="),
-                                case GuardPayloadType of 
-                                    is_integer -> erl_syntax:integer(GuardPayload);
-                                    is_atom -> erl_syntax:atom(GuardPayload)
-                                end
-                            );
-                        _ ->
-                            []
-                    end,
-                
-                erl_syntax:infix_expr(
-                    MainGuard,
-                    erl_syntax:operator("andalso"),
-                    AdditionalGuard);
-
-            % No additional guards, just return main body
-            [] -> MainGuard
-        end.
-
-% get_system_states/1
 generate_all_states() ->
-    % vars
-    SysInfoVar = erl_syntax:variable('StateTransitionTable'),
-    SrcVar = erl_syntax:variable('Src'),
-    EventSpecVar = erl_syntax:variable('_EventSpec'),
-    ConditionVar = erl_syntax:variable('_Condition'),
-    DstVar = erl_syntax:variable('Dst'),
-    AccVar = erl_syntax:variable('Acc'),
-    StatesVar = erl_syntax:variable('States'),
-
-    TransitionsAssignment = erl_syntax:infix_expr(
-        SysInfoVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(erl_syntax:atom(init_transitions),[])
-        ),
-
-    FoldBody = erl_syntax:fun_expr([
-        erl_syntax:clause(
-              [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar]),AccVar],
-            [],
-            [erl_syntax:cons(SrcVar, erl_syntax:list([DstVar,AccVar]))])
-    ]),
-
-    FoldExpression = erl_syntax:application(
-        erl_syntax:atom(lists),
-        erl_syntax:atom(foldl),
-        [FoldBody,erl_syntax:list([]), SysInfoVar]),
-
-    StateAssignment = erl_syntax:infix_expr(StatesVar,erl_syntax:operator('='),FoldExpression),
-
-    FunctionReturn = erl_syntax:application(
-        erl_syntax:atom(lists),
-        erl_syntax:atom(usort),
-        [erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(flatten),[StatesVar])]),
-
-     [erl_syntax:function(
-        erl_syntax:atom(get_system_states),
-        [
-            erl_syntax:clause(
-                [],
-                [],
-                [TransitionsAssignment,StateAssignment,FunctionReturn]
-            )
-        ]
-    )].
-
-%%% ----------------------------------------------------------------------------
-%%% State Management
-%%% ----------------------------------------------------------------------------
+    maxhml_agm_codegen:generate_all_states().
 
 generate_state_management() ->
-    generate_update_system_state_function().    
+    maxhml_agm_codegen:generate_state_management().
 
-generate_update_system_state_function()->
-    ParamEvent = erl_syntax:variable("Event"),
-    OutdatedStateVariable = erl_syntax:variable("OutdatedState"),
-    UpdatedStateVariable = erl_syntax:variable("UpdatedState"),
-
-    OutdatedClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(lookup_element),[erl_syntax:atom(sus_state),erl_syntax:atom(current_state),erl_syntax:integer(2)]),
-
-    UpdatedClause = erl_syntax:application(erl_syntax:atom(reachable_state), [OutdatedStateVariable,ParamEvent]),
-
-    OutdatedClauseAssignment = erl_syntax:infix_expr(OutdatedStateVariable,erl_syntax:operator('='),OutdatedClause),
-    UpdatedClauseAssignment = erl_syntax:infix_expr(UpdatedStateVariable,erl_syntax:operator('='),UpdatedClause),
-
-    UpdatePreviousStateClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert),[erl_syntax:atom(sus_state),erl_syntax:tuple([erl_syntax:atom(previous_state),OutdatedStateVariable])]),
-
-    UpdateCurrentStateClause = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert),[erl_syntax:atom(sus_state),erl_syntax:tuple([erl_syntax:atom(current_state),UpdatedStateVariable])]),
-
-
-    [erl_syntax:function(
-        erl_syntax:atom(update_current_state),
-        [
-            % TODO: When understanding how to pass the correct vars, remove the underscore
-            erl_syntax:clause(
-                [ParamEvent],
-                [],
-                [OutdatedClauseAssignment,UpdatedClauseAssignment,UpdatePreviousStateClause,UpdateCurrentStateClause]
-            )
-        ]
-    )].
-
-
-%%% ----------------------------------------------------------------------------
-%%% Automaton Guided Monitoring functions.
-%%% ----------------------------------------------------------------------------
-
-agm_generation()->
-    lists:flatten([
-        generate_reachable_state_function(),
-        generate_preceeding_states_from_state_function(),
-        generate_resolve_singleton_state_function(),
-        generate_candidate_event_specs_function(),
-        generate_monitoring_consequence_functions(),
-        generate_handle_missing_event_function(),
-        generate_preceeding_states_from_event_function(),
-        generate_reachable_state_from_state()
-    ]).
-
-% reachable_state/2
-generate_reachable_state_function()->
-    
-    % vars
-    ParamState = erl_syntax:variable('State'),
-    ParamEvent = erl_syntax:variable('Event'),
-    TransitionsVar = erl_syntax:variable('StateTransitionTable'),
-    SrcVar = erl_syntax:variable('Src'),
-    DstVar = erl_syntax:variable('Dst'),
-    EventSpecVar = erl_syntax:variable('_EventSpec'),
-    ConditionVar = erl_syntax:variable('Condition'),
-    AccVar = erl_syntax:variable('Acc'),
-
-    TransitionsAssignment = erl_syntax:infix_expr(
-        TransitionsVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(erl_syntax:atom(init_transitions),[])
-        ),
-
-    % For Case Expression
-    CaseCondition1 = erl_syntax:infix_expr(SrcVar, erl_syntax:operator('=:='), ParamState),
-    CaseCondition2 = erl_syntax:application(ConditionVar,[ParamEvent]),
-    CaseCondition = erl_syntax:infix_expr(CaseCondition1, erl_syntax:operator('andalso'), CaseCondition2),
-
-    CaseConditionTrueBody = DstVar,
-    CaseConditionFalseBody = AccVar,
-
-    CaseExpression = erl_syntax:case_expr(
-        CaseCondition,
-        [
-            erl_syntax:clause(
-                [erl_syntax:atom(true)],
-                [],
-                [CaseConditionTrueBody]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:atom(false)],
-                [],
-                [CaseConditionFalseBody]
-            )
-            ]
-        ),
-
-    % For Fold Expression 
-    FoldBody = erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar]),AccVar],
-            [],
-            [CaseExpression])
-    ]),
-
-    FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-                                [FoldBody, erl_syntax:list([]), TransitionsVar]
-                                ),
-
-    [erl_syntax:function(
-        erl_syntax:atom(reachable_state),
-        [
-            erl_syntax:clause(
-                [ParamState,ParamEvent],
-                [],
-                [TransitionsAssignment,FoldExpression]
-            )
-        ]
-    )].
-
-% reachable_states_from_state/1
-generate_reachable_state_from_state() ->
-  % vars
-    ParamState = erl_syntax:variable('State'),
-    TransitionsVar = erl_syntax:variable('StateTransitionTable'),
-    SrcVar = erl_syntax:variable('Src'),
-    DstVar = erl_syntax:variable('Dst'),
-    EventSpecVar = erl_syntax:variable('_EventSpec'),
-    ConditionVar = erl_syntax:variable('_Condition'),
-    AccVar = erl_syntax:variable('Acc'),
-
-    TransitionsAssignment = erl_syntax:infix_expr(
-        TransitionsVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(erl_syntax:atom(init_transitions),[])
-        ),
-
-    % For If Expression 
-    IfClauseMatch = 
-        erl_syntax:clause([],
-        [erl_syntax:infix_expr(SrcVar,erl_syntax:operator('=:='),ParamState)],
-        [erl_syntax:application(erl_syntax:atom(lists), erl_syntax:atom(usort), [erl_syntax:cons(DstVar, AccVar)])]),
-    
-    IfClauseNoMatch = 
-        erl_syntax:clause([],
-        [erl_syntax:atom(true)],
-        [AccVar]),
-
-    IfExpression = erl_syntax:if_expr([IfClauseMatch,IfClauseNoMatch]),
-
-    FoldBody = erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar]),AccVar],
-            [],
-            [IfExpression])
-    ]),
-
-    FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-                            [FoldBody, erl_syntax:list([]), TransitionsVar]
-                            ),
-               [erl_syntax:function(
-    
-    erl_syntax:atom(reachable_states_from_state),
-        [
-            erl_syntax:clause(
-                [ParamState],
-                [],
-                [TransitionsAssignment,FoldExpression]
-            )
-        ]
-    )].                 
-
-% preceeding_states/1
-generate_preceeding_states_from_state_function() ->
-   % vars
-    ParamState = erl_syntax:variable('State'),
-    % ParamEvent = erl_syntax:variable('Event'),
-    TransitionsVar = erl_syntax:variable('StateTransitionTable'),
-    SrcVar = erl_syntax:variable('Src'),
-    DstVar = erl_syntax:variable('Dst'),
-    EventSpecVar = erl_syntax:variable('_EventSpec'),
-    ConditionVar = erl_syntax:variable('_Condition'),
-    AccVar = erl_syntax:variable('Acc'),
-
-    TransitionsAssignment = erl_syntax:infix_expr(
-        TransitionsVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(erl_syntax:atom(init_transitions),[])
-        ),
-    
-
-    % For If Expression 
-    IfClauseMatch = 
-        erl_syntax:clause([],
-        [erl_syntax:infix_expr(DstVar,erl_syntax:operator('=:='),ParamState)],
-        [erl_syntax:application(erl_syntax:atom(lists), erl_syntax:atom(usort), [erl_syntax:cons(SrcVar, AccVar)])]),
-    
-    IfClauseNoMatch = 
-        erl_syntax:clause([],
-        [erl_syntax:atom(true)],
-        [AccVar]),
-
-    IfExpression = erl_syntax:if_expr([IfClauseMatch,IfClauseNoMatch]),
-
-    FoldBody = erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [erl_syntax:tuple([SrcVar, DstVar, EventSpecVar, ConditionVar]),AccVar],
-            [],
-            [IfExpression])
-    ]),
-
-    FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-                            [FoldBody, erl_syntax:list([]), TransitionsVar]
-                            ),
-    
-    [erl_syntax:function(
-        erl_syntax:atom(preceeding_states_from_state),
-        [
-            erl_syntax:clause(
-                [ParamState],
-                [],
-                [TransitionsAssignment,FoldExpression]
-            )
-        ]
-    )].
-
-generate_preceeding_states_from_event_function()->
-    ParamEvent = erl_syntax:variable("Event"),
-    AccVar = erl_syntax:variable("Acc"),
-    StateVar = erl_syntax:variable("State"),
-
-    CaseExpression = erl_syntax:case_expr(
-        erl_syntax:application(erl_syntax:atom(reachable_state), [erl_syntax:variable("State"), ParamEvent]),
-        [
-            erl_syntax:clause(
-                [erl_syntax:list([])],
-                [],
-                [AccVar]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:underscore()],
-                [],
-                [erl_syntax:cons(StateVar,AccVar)]
-            )
-            ]
-        ),
-
-    FoldBody = erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [StateVar, AccVar],
-            [],
-            [CaseExpression])
-    ]),
-
-     FoldExpression = erl_syntax:application(erl_syntax:atom(lists),erl_syntax:atom(foldl),
-                        [FoldBody, erl_syntax:list([]), erl_syntax:application(erl_syntax:atom(get_system_states),[])]
-                        ),
-
-
-     [erl_syntax:function(
-        erl_syntax:atom(preceeding_states_from_event),
-        [
-            erl_syntax:clause(
-                [ParamEvent],
-                [],
-                [FoldExpression]
-            )
-        ]
-    )].
-
-generate_resolve_singleton_state_function() ->
-    StateVar = erl_syntax:variable('State'),
-
-    [erl_syntax:function(
-        erl_syntax:atom(resolve_singleton_state),
-        [
-            erl_syntax:clause(
-                [erl_syntax:list([StateVar])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    StateVar
-                ])]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:list([])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    erl_syntax:atom(impossible_recovery)
-                ])]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:underscore()],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    erl_syntax:atom(ambiguous_state)
-                ])]
-            )
-        ]
-    )].
-
-generate_candidate_event_specs_function() ->
-    X0Var = erl_syntax:variable('X0'),
-    X1Var = erl_syntax:variable('X1'),
-    TransitionsVar = erl_syntax:variable('StateTransitionTable'),
-    SrcVar = erl_syntax:variable('Src'),
-    DstVar = erl_syntax:variable('Dst'),
-    EventSpecVar = erl_syntax:variable('EventSpec'),
-    ConditionVar = erl_syntax:variable('_Condition'),
-    AccVar = erl_syntax:variable('Acc'),
-
-    TransitionsAssignment = erl_syntax:infix_expr(
-        TransitionsVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(erl_syntax:atom(init_transitions), [])
-    ),
-
-    SourceMatches = erl_syntax:infix_expr(
-        SrcVar,
-        erl_syntax:operator('=:='),
-        X0Var
-    ),
-    DestinationMatches = erl_syntax:infix_expr(
-        DstVar,
-        erl_syntax:operator('=:='),
-        X1Var
-    ),
-    TransitionMatches = erl_syntax:infix_expr(
-        SourceMatches,
-        erl_syntax:operator('andalso'),
-        DestinationMatches
-    ),
-
-    CaseExpression = erl_syntax:case_expr(
-        TransitionMatches,
-        [
-            erl_syntax:clause(
-                [erl_syntax:atom(true)],
-                [],
-                [erl_syntax:cons(EventSpecVar, AccVar)]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:atom(false)],
-                [],
-                [AccVar]
-            )
-        ]
-    ),
-
-    FoldBody = erl_syntax:fun_expr([
-        erl_syntax:clause(
-            [
-                erl_syntax:tuple([
-                    SrcVar,
-                    DstVar,
-                    EventSpecVar,
-                    ConditionVar
-                ]),
-                AccVar
-            ],
-            [],
-            [CaseExpression]
-        )
-    ]),
-    FoldExpression = erl_syntax:application(
-        erl_syntax:atom(lists),
-        erl_syntax:atom(foldl),
-        [FoldBody, erl_syntax:list([]), TransitionsVar]
-    ),
-    UniqueEventSpecs = erl_syntax:application(
-        erl_syntax:atom(lists),
-        erl_syntax:atom(usort),
-        [FoldExpression]
-    ),
-
-    [erl_syntax:function(
-        erl_syntax:atom(candidate_event_specs),
-        [
-            erl_syntax:clause(
-                [X0Var, X1Var],
-                [],
-                [TransitionsAssignment, UniqueEventSpecs]
-            )
-        ]
-    )].
-
-generate_monitoring_consequence_functions() ->
-    lists:flatten([
-        generate_resolve_monitoring_consequence_function(),
-        generate_collect_monitoring_consequences_function(),
-        generate_merge_monitoring_consequences_function(),
-        generate_deduce_event_if_unique_function(),
-        generate_event_spec_membership_function()
-    ]).
-
-generate_resolve_monitoring_consequence_function() ->
-    RecoveryVar = erl_syntax:variable('Recovery'),
-    ReductionFunVar = erl_syntax:variable('ReductionFun'),
-    EventSpecsVar = erl_syntax:variable('EventSpecs'),
-    SignatureVar = erl_syntax:variable('Signature'),
-    ContinuationVar = erl_syntax:variable('Continuation'),
-    ConsequencesVar = erl_syntax:variable('_Consequences'),
-    ReasonVar = erl_syntax:variable('_Reason'),
-
-    EventSpecsAssignment = erl_syntax:infix_expr(
-        EventSpecsVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(
-            erl_syntax:atom(maps),
-            erl_syntax:atom(get),
-            [erl_syntax:atom(event_specs), RecoveryVar]
-        )
-    ),
-    CollectedConsequences = erl_syntax:application(
-        erl_syntax:atom(collect_monitoring_consequences),
-        [
-            EventSpecsVar,
-            ReductionFunVar,
-            erl_syntax:list([])
-        ]
-    ),
-    SuccessfulResolution = erl_syntax:tuple([
-        erl_syntax:atom(ok),
-        erl_syntax:map_expr([
-            erl_syntax:map_field_assoc(
-                erl_syntax:atom(consequence),
-                SignatureVar
-            ),
-            erl_syntax:map_field_assoc(
-                erl_syntax:atom(event),
-                erl_syntax:application(
-                    erl_syntax:atom(deduce_event_if_unique),
-                    [EventSpecsVar]
-                )
-            ),
-            erl_syntax:map_field_assoc(
-                erl_syntax:atom(continuation),
-                ContinuationVar
-            )
-        ])
-    ]),
-    ResolutionCase = erl_syntax:case_expr(
-        CollectedConsequences,
-        [
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    erl_syntax:list([])
-                ])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    erl_syntax:atom(impossible_recovery)
-                ])]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    erl_syntax:list([
-                        erl_syntax:tuple([
-                            SignatureVar,
-                            ContinuationVar
-                        ])
-                    ])
-                ])],
-                [],
-                [SuccessfulResolution]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    ConsequencesVar
-                ])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    erl_syntax:atom(ambiguous_consequence)
-                ])]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(unknown),
-                    ReasonVar
-                ])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    erl_syntax:atom(unproven_consequence)
-                ])]
-            )
-        ]
-    ),
-
-    [erl_syntax:function(
-        erl_syntax:atom(resolve_monitoring_consequence),
-        [
-            erl_syntax:clause(
-                [RecoveryVar, ReductionFunVar],
-                [],
-                [EventSpecsAssignment, ResolutionCase]
-            )
-        ]
-    )].
-
-generate_collect_monitoring_consequences_function() ->
-    EventSpecVar = erl_syntax:variable('EventSpec'),
-    RestVar = erl_syntax:variable('Rest'),
-    ReductionFunVar = erl_syntax:variable('ReductionFun'),
-    AccVar = erl_syntax:variable('Acc'),
-    ReductionsVar = erl_syntax:variable('Reductions'),
-    ReasonVar = erl_syntax:variable('Reason'),
-
-    ReductionCase = erl_syntax:case_expr(
-        erl_syntax:application(ReductionFunVar, [EventSpecVar]),
-        [
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    ReductionsVar
-                ])],
-                [],
-                [erl_syntax:application(
-                    erl_syntax:atom(collect_monitoring_consequences),
-                    [
-                        RestVar,
-                        ReductionFunVar,
-                        erl_syntax:application(
-                            erl_syntax:atom(merge_monitoring_consequences),
-                            [ReductionsVar, AccVar]
-                        )
-                    ]
-                )]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(unknown),
-                    ReasonVar
-                ])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(unknown),
-                    ReasonVar
-                ])]
-            )
-        ]
-    ),
-
-    [erl_syntax:function(
-        erl_syntax:atom(collect_monitoring_consequences),
-        [
-            erl_syntax:clause(
-                [
-                    erl_syntax:list([]),
-                    erl_syntax:underscore(),
-                    AccVar
-                ],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    AccVar
-                ])]
-            ),
-            erl_syntax:clause(
-                [
-                    erl_syntax:cons(EventSpecVar, RestVar),
-                    ReductionFunVar,
-                    AccVar
-                ],
-                [],
-                [ReductionCase]
-            )
-        ]
-    )].
-
-generate_merge_monitoring_consequences_function() ->
-    ReductionVar = erl_syntax:variable('Reduction'),
-    RestVar = erl_syntax:variable('Rest'),
-    AccVar = erl_syntax:variable('Acc'),
-    SignatureVar = erl_syntax:variable('Signature'),
-    ContinuationVar = erl_syntax:variable('_Continuation'),
-
-    ReductionAssignment = erl_syntax:infix_expr(
-        erl_syntax:tuple([
-            SignatureVar,
-            ContinuationVar
-        ]),
-        erl_syntax:operator('='),
-        ReductionVar
-    ),
-    SignatureExists = erl_syntax:application(
-        erl_syntax:atom(lists),
-        erl_syntax:atom(keymember),
-        [
-            SignatureVar,
-            erl_syntax:integer(1),
-            AccVar
-        ]
-    ),
-    MergeCase = erl_syntax:case_expr(
-        SignatureExists,
-        [
-            erl_syntax:clause(
-                [erl_syntax:atom(true)],
-                [],
-                [erl_syntax:application(
-                    erl_syntax:atom(merge_monitoring_consequences),
-                    [RestVar, AccVar]
-                )]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:atom(false)],
-                [],
-                [erl_syntax:application(
-                    erl_syntax:atom(merge_monitoring_consequences),
-                    [
-                        RestVar,
-                        erl_syntax:cons(ReductionVar, AccVar)
-                    ]
-                )]
-            )
-        ]
-    ),
-
-    [erl_syntax:function(
-        erl_syntax:atom(merge_monitoring_consequences),
-        [
-            erl_syntax:clause(
-                [
-                    erl_syntax:list([]),
-                    AccVar
-                ],
-                [],
-                [AccVar]
-            ),
-            erl_syntax:clause(
-                [
-                    erl_syntax:cons(ReductionVar, RestVar),
-                    AccVar
-                ],
-                [],
-                [ReductionAssignment, MergeCase]
-            )
-        ]
-    )].
-
-generate_deduce_event_if_unique_function() ->
-    EventVar = erl_syntax:variable('Event'),
-
-    [erl_syntax:function(
-        erl_syntax:atom(deduce_event_if_unique),
-        [
-            erl_syntax:clause(
-                [erl_syntax:list([
-                    erl_syntax:tuple([
-                        erl_syntax:atom(literal),
-                        EventVar
-                    ])
-                ])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(known),
-                    EventVar
-                ])]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:underscore()],
-                [],
-                [erl_syntax:atom(unknown)]
-            )
-        ]
-    )].
-
-generate_event_spec_membership_function() ->
-    EventVar = erl_syntax:variable('Event'),
-    ValueVar = erl_syntax:variable('Value'),
-    ExcludedVar = erl_syntax:variable('Excluded'),
-    IsInteger = erl_syntax:application(
-        erl_syntax:atom(is_integer),
-        [ValueVar]
-    ),
-
-    [erl_syntax:function(
-        erl_syntax:atom(event_spec_membership),
-        [
-            erl_syntax:clause(
-                [
-                    erl_syntax:tuple([
-                        erl_syntax:atom(literal),
-                        EventVar
-                    ]),
-                    ValueVar
-                ],
-                [],
-                [erl_syntax:infix_expr(
-                    EventVar,
-                    erl_syntax:operator('=:='),
-                    ValueVar
-                )]
-            ),
-            erl_syntax:clause(
-                [
-                    erl_syntax:tuple([
-                        erl_syntax:atom(symbolic),
-                        erl_syntax:atom(natural_integer)
-                    ]),
-                    ValueVar
-                ],
-                [],
-                [erl_syntax:infix_expr(
-                    IsInteger,
-                    erl_syntax:operator('andalso'),
-                    erl_syntax:infix_expr(
-                        ValueVar,
-                        erl_syntax:operator('>'),
-                        erl_syntax:integer(0)
-                    )
-                )]
-            ),
-            erl_syntax:clause(
-                [
-                    erl_syntax:tuple([
-                        erl_syntax:atom(symbolic),
-                        erl_syntax:atom(any_integer)
-                    ]),
-                    ValueVar
-                ],
-                [],
-                [IsInteger]
-            ),
-            erl_syntax:clause(
-                [
-                    erl_syntax:tuple([
-                        erl_syntax:atom(symbolic),
-                        erl_syntax:atom(real_number)
-                    ]),
-                    ValueVar
-                ],
-                [],
-                [erl_syntax:application(
-                    erl_syntax:atom(is_number),
-                    [ValueVar]
-                )]
-            ),
-            erl_syntax:clause(
-                [
-                    erl_syntax:tuple([
-                        erl_syntax:atom(symbolic),
-                        erl_syntax:atom(any_integer_except),
-                        ExcludedVar
-                    ]),
-                    ValueVar
-                ],
-                [],
-                [erl_syntax:infix_expr(
-                    IsInteger,
-                    erl_syntax:operator('andalso'),
-                    erl_syntax:infix_expr(
-                        ValueVar,
-                        erl_syntax:operator('=/='),
-                        ExcludedVar
-                    )
-                )]
-            ),
-            erl_syntax:clause(
-                [
-                    erl_syntax:underscore(),
-                    erl_syntax:underscore()
-                ],
-                [],
-                [erl_syntax:atom(unknown)]
-            )
-        ]
-    )].
-
-generate_handle_missing_event_function()->
-
-    X0Var = erl_syntax:variable('X0'),
-    FromVar = erl_syntax:variable('From'),
-    Alpha1CompatibleStatesVar = erl_syntax:variable('Alpha1CompatibleStates'),
-    ReachableX1CandidatesVar = erl_syntax:variable('ReachableX1Candidates'),
-    X1CandidatesVar = erl_syntax:variable('X1Candidates'),
-    X1Var = erl_syntax:variable('X1'),
-    EventSpecsVar = erl_syntax:variable('EventSpecs'),
-    ReasonVar = erl_syntax:variable('Reason'),
-    PayloadVar = erl_syntax:variable('Payload'),
-
-    X0Assignment = erl_syntax:infix_expr(
-        X0Var,
-        erl_syntax:operator('='),
-        erl_syntax:application(
-            erl_syntax:atom(ets),
-            erl_syntax:atom(lookup_element),
-            [
-                erl_syntax:atom(sus_state),
-                erl_syntax:atom(current_state),
-                erl_syntax:integer(2)
-            ]
-        )
-    ),
-
-    MissingEventOutput = erl_syntax:application(
-        erl_syntax:atom(io),
-        erl_syntax:atom(format),
-        [erl_syntax:string("Missing event detected, tracing next event...~n")]
-    ),
-
-    Alpha1CompatibleStatesAssignment = erl_syntax:infix_expr(
-        Alpha1CompatibleStatesVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(
-            erl_syntax:atom(preceeding_states_from_event),
-            [PayloadVar]
-        )
-    ),
-
-    ReachableX1CandidatesAssignment = erl_syntax:infix_expr(
-        ReachableX1CandidatesVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(
-            erl_syntax:atom(reachable_states_from_state),
-            [X0Var]
-        )
-    ),
-
-    X1CandidatesAssignment = erl_syntax:infix_expr(
-        X1CandidatesVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(
-            erl_syntax:atom(sets),
-            erl_syntax:atom(to_list),
-            [
-                erl_syntax:application(
-                    erl_syntax:atom(sets),
-                    erl_syntax:atom(intersection),
-                    [
-                        erl_syntax:application(
-                            erl_syntax:atom(sets),
-                            erl_syntax:atom(from_list),
-                            [ReachableX1CandidatesVar]
-                        ),
-                        erl_syntax:application(
-                            erl_syntax:atom(sets),
-                            erl_syntax:atom(from_list),
-                            [Alpha1CompatibleStatesVar]
-                        )
-                    ]
-                )
-            ]
-        )
-    ),
-
-    EventSpecsAssignment = erl_syntax:infix_expr(
-        EventSpecsVar,
-        erl_syntax:operator('='),
-        erl_syntax:application(
-            erl_syntax:atom(candidate_event_specs),
-            [X0Var, X1Var]
-        )
-    ),
-
-    UpdatePreviousState = erl_syntax:application(
-        erl_syntax:atom(ets),
-        erl_syntax:atom(insert),
-        [
-            erl_syntax:atom(sus_state),
-            erl_syntax:tuple([
-                erl_syntax:atom(previous_state),
-                X0Var
-            ])
-        ]
-    ),
-
-    UpdateCurrentState = erl_syntax:application(
-        erl_syntax:atom(ets),
-        erl_syntax:atom(insert),
-        [
-            erl_syntax:atom(sus_state),
-            erl_syntax:tuple([
-                erl_syntax:atom(current_state),
-                X1Var
-            ])
-        ]
-    ),
-
-    RecoveryMap = erl_syntax:map_expr([
-        erl_syntax:map_field_assoc(
-            erl_syntax:atom(source_state),
-            X0Var
-        ),
-        erl_syntax:map_field_assoc(
-            erl_syntax:atom(inferred_state),
-            X1Var
-        ),
-        erl_syntax:map_field_assoc(
-            erl_syntax:atom(event_specs),
-            EventSpecsVar
-        )
-    ]),
-
-    SuccessfulRecovery = erl_syntax:tuple([
-        erl_syntax:atom(ok),
-        RecoveryMap
-    ]),
-    ImpossibleRecovery = erl_syntax:tuple([
-        erl_syntax:atom(withhold),
-        erl_syntax:atom(impossible_recovery)
-    ]),
-
-    EventSpecsCase = erl_syntax:case_expr(
-        EventSpecsVar,
-        [
-            erl_syntax:clause(
-                [erl_syntax:list([])],
-                [],
-                [ImpossibleRecovery]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:underscore()],
-                [],
-                [
-                    UpdatePreviousState,
-                    UpdateCurrentState,
-                    SuccessfulRecovery
-                ]
-            )
-        ]
-    ),
-
-    SingletonStateCase = erl_syntax:case_expr(
-        erl_syntax:application(
-            erl_syntax:atom(resolve_singleton_state),
-            [X1CandidatesVar]
-        ),
-        [
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(ok),
-                    X1Var
-                ])],
-                [],
-                [
-                    EventSpecsAssignment,
-                    EventSpecsCase
-                ]
-            ),
-            erl_syntax:clause(
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    ReasonVar
-                ])],
-                [],
-                [erl_syntax:tuple([
-                    erl_syntax:atom(withhold),
-                    ReasonVar
-                ])]
-            )
-        ]
-    ),
-
-    % TODO: SUPPORT MORE CLAUSE TYPES ...SUCH AS RECEIVE AND THOSE KINDS 
-    ReceiveClauseSend = erl_syntax:clause(
-        [erl_syntax:tuple([erl_syntax:tuple([
-            erl_syntax:atom(trace), erl_syntax:underscore(), erl_syntax:atom(send), PayloadVar,  erl_syntax:underscore()]),FromVar])],
-        none,
-        [
-            MissingEventOutput,
-            Alpha1CompatibleStatesAssignment,
-            ReachableX1CandidatesAssignment,
-            X1CandidatesAssignment,
-            SingletonStateCase
-        ]
-    ),
-
-    ReceiveExpr = erl_syntax:receive_expr([ReceiveClauseSend]),
-
-    [erl_syntax:function(
-        erl_syntax:atom(handle_missing_event),
-        [
-            erl_syntax:clause(
-                [FromVar],
-                [],
-                [X0Assignment,ReceiveExpr]
-            )
-        ]
-    )].
-
-    
+agm_generation() ->
+    maxhml_agm_codegen:agm_generation().
 
 %%% ----------------------------------------------------------------------------
 %%% Private monitor environment creation functions.
@@ -2589,7 +942,7 @@ get_chs_str() ->
 %%%       someone else has done it.
 %%% }
 -spec get_pat(Node :: af_hml_pos() | af_hml_nec()) -> erl_syntax:syntaxTree().
-get_pat({Mod, _, {?HML_ACT, _, Pat, Guard}, _})
+get_pat({Mod, _, {?HML_ACT, _, Pat, _Guard}, _})
   when Mod =:= ?HML_POS; Mod =:= ?HML_NEC ->
 
   Str = erl_pp:expr(erl_syntax:revert(gen_eval:pat_tuple(Pat))),
@@ -2657,24 +1010,24 @@ extract_free_vars_from_guard(Guard, Pat) ->
     extract_vars_guard(Guard, BoundVars, []).
 -spec extract_bound_vars_from_guard(Node) -> string() when
     Node :: af_maxhml().
-extract_bound_vars_from_guard(Node = {Vrd, LineNumber}) ->
+extract_bound_vars_from_guard(_Node = {_Vrd, _LineNumber}) ->
     [];
-extract_bound_vars_from_guard(Node = {?HML_VAR, _, _Name}) ->
+extract_bound_vars_from_guard(_Node = {?HML_VAR, _, _Name}) ->
     [];
-extract_bound_vars_from_guard(Node = {?HML_MAX, _, {?HML_VAR, _, _Name}, Phi}) ->
+extract_bound_vars_from_guard(_Node = {?HML_MAX, _, {?HML_VAR, _, _Name}, Phi}) ->
     extract_bound_vars_from_guard(Phi);
-extract_bound_vars_from_guard(OuterNode =
+extract_bound_vars_from_guard(_OuterNode =
         {?HML_AND, _,
-            InnerLeftNode =
-                {?HML_NEC, _, PhiLeftNode = {_, LineNumberLeft, PatPhiLeft, GuardPhiLeft}, PsiLeft},
-            InnerRightNode =
-                {?HML_NEC, _, PhiRightNode = {_, LineNumberRight, PatPhiRight, GuardPhiRight},
-                    PsiRight}}) ->
+            _InnerLeftNode =
+                {?HML_NEC, _, _PhiLeftNode = {_, _LineNumberLeft, PatPhiLeft, _GuardPhiLeft}, _PsiLeft},
+            _InnerRightNode =
+                {?HML_NEC, _, _PhiRightNode = {_, _LineNumberRight, PatPhiRight, _GuardPhiRight},
+                    _PsiRight}}) ->
     BoundVarsLeft = extract_vars(PatPhiLeft, []),
     BoundVarsRight = extract_vars(PatPhiRight, []),
     BoundVars = BoundVarsLeft ++ BoundVarsRight,
     BoundVars;
-extract_bound_vars_from_guard(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}) ->
+extract_bound_vars_from_guard(_Node = {?HML_NEC, _LineNumber, {act, _, Pat, _Guard}, _Phi}) ->
     BoundVars = extract_vars(Pat, []),
     BoundVars.
 

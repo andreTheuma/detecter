@@ -583,12 +583,12 @@ visit_entry_form(
     Args :: [abstract_expr()],
     Opts :: opts:options().
 
-visit_function_forms(_Mod, [], Opts) ->
+visit_function_forms(_Mod, [], _Opts) ->
     [erl_syntax:clause([], none, [erl_syntax:atom(undefined)])];
 visit_function_forms(
-    Mod, [{form, _, {sel, _, {mfargs, _, _, _, _}, _}, 
-      Phi= {var, _, _Name} } 
-    | _], Opts
+    Mod, [
+      _Form = {form, _, {sel, _, {mfargs, _, _, _, _}, _}, Phi = {var, _, _Name} } | _
+    ], Opts
 ) ->
     % PROB FOR NOTHING
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
@@ -596,9 +596,10 @@ visit_function_forms(
     FunctionsPass = Mod:modularise_hml(Phi, Opts),
      Mod:generate_verdicts() ++ FunctionsPass;
 visit_function_forms(
-    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, 
-      Phi={max, LineNumber, Var = {var, _, _}, ContPhi}} 
-    | Forms], Opts
+    Mod, [
+      _Form = {form, _, {sel, _, _MFArgs = {mfargs, _, _M, _F, _Args}, _Guard},
+      _Phi = {max, _LineNumber, _Var = {var, _, _}, ContPhi}}
+      | _Forms], Opts
 ) ->
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
@@ -681,19 +682,19 @@ visit_forms(Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Gu
 %%% Private code generating and compilation functions.
 %%% ----------------------------------------------------------------------------
 %% @private Merge multiple monitors written by write_monitor/3 so they are all written
-%% to the seperate files.
+%% to the separate files.
 -spec write_monitors([Monitor], File, Opts) -> ok | {error, errors(), warnings()} when
     Monitor :: {ok, _, _, _} | {error, errors(), warnings()},
     File :: file:filename(),
     Opts :: opts:options().
-write_monitors(_, _, _) ->
-    ok;
 write_monitors([{ok, _, _, _} | Monitors], File, Opts) ->
     write_monitors(Monitors, File, Opts);
 write_monitors([{error, Errors, Warnings} | Monitors], File, Opts) ->
     show_errors(Errors),
     show_warnings(Warnings),
-    write_monitors(Monitors, File, Opts).
+    write_monitors(Monitors, File, Opts);
+write_monitors(_, _, _) ->
+  ok.
 
 %% @private Writes the function look up monitor to the specified file.
 -spec write_lookup_monitor(Ast, File, Opts) -> {ok, _, _, _} | {error, errors(), warnings()} when

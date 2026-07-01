@@ -35,6 +35,8 @@ test: compile-test
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(log_tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(sys_info_parser_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(generated_monitor_smoke_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
+	erl -noshell -pa $(BIN) -eval 'case eunit:test(generated_agm_recovery_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
+	erl -noshell -pa $(BIN) -eval 'case eunit:test(agm_engine_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 
 analyze:
 	 dialyzer -pa $(BIN) -I $(INCLUDE) $(call recursive,$(SRC),erl)
