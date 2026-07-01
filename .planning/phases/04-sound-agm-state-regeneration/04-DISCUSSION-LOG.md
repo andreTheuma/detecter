@@ -15,17 +15,21 @@
 
 **Question:** What should missing-event handling return when recovery is not deterministic?
 
-**Decision:** Return `{withhold, Reason}`, not `false` and not rejection. `{ok, Recovery}` is reserved for singleton state and singleton concrete event recovery.
+**Superseded decision:** Return `{withhold, Reason}`, not `false` and not rejection. The original discussion reserved `{ok, Recovery}` for singleton state and singleton concrete event recovery.
 
-**Rationale:** Thesis text states that monitors preserve soundness by withholding judgement when information is insufficient.
+**Revision (2026-07-01):** `{ok, Recovery}` requires singleton state inference, but may retain several literal or symbolic event descriptors. The monitor proceeds only after every descriptor has one complete monitoring consequence. Exact event recovery is optional metadata.
+
+**Rationale:** Soundness depends on deterministic monitor behavior over every model-compatible event, not on identifying which monitor-equivalent event occurred.
 
 ## Area: Symbolic Events
 
 **Question:** Can symbolic ranges such as `N` or `Z \ 0` count as recovered missing events?
 
-**Decision:** No. Symbolic ranges may help filter possible states, but the missing event itself is only recovered when it is a single concrete literal.
+**Superseded decision:** The original discussion allowed symbolic ranges only for state filtering and required withholding because they do not identify one literal event.
 
-**Rationale:** Thesis text states event regeneration requires complete certainty and that range-derived events do not produce verdicts.
+**Revision (2026-07-01):** A symbolic range may proceed when the generated monitor proves one consequence over the entire represented domain. The exact event remains unknown. Conflicting or unproven symbolic consequences withhold.
+
+**Rationale:** Exact regeneration is a useful refinement, while deterministic monitoring consequence is the soundness gate.
 
 ## Area: Phase Boundary
 

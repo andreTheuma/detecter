@@ -8,9 +8,9 @@
 The thesis supports withholding rather than rejection when recovery is not deterministic:
 
 - `chap3/methodology.tex` states that incomplete traces preserve soundness by withholding a verdict.
-- `chap3/methodology.tex` states that event regeneration is certain only when there is one action between the inferred states.
-- `chap3/implementation.tex` says `find_event/2` returns non-deterministic errors when multiple distinct events map to the same state transition.
-- `chap3/implementation.tex` and `chap4/results_and_discussion_main.tex` state that symbolic ranges such as `n in N` are not concrete recovered events and do not produce verdicts.
+- `chap3/methodology.tex` distinguishes exact event recovery from the monitoring consequence reached by every event between inferred states.
+- `chap3/implementation.tex` represents each compatible event with an inspectable descriptor and compares complete continuation or verdict signatures.
+- `chap3/implementation.tex` and `chap4/results_and_discussion_main.tex` state that symbolic ranges such as `n in N` do not identify a concrete event but may proceed when consequence uniformity is proven.
 - `chap4/results_and_discussion_main.tex` explicitly says the monitor would rather withhold than eagerly accept or reject.
 
 ## Code Findings
@@ -47,7 +47,9 @@ Generated AGM helper functions are not exported by default. Tests can compile ge
 
 1. Preserve transition rows as a list with event descriptors.
 2. Update generated helper folds to consume transition lists.
-3. Add singleton-selection helpers and concrete-event deduction.
+3. Add singleton-selection helpers and candidate-event descriptor collection.
 4. Return `{ok, Recovery}` or `{withhold, Reason}` from `handle_missing_event/1`.
-5. Change generated missing-event case handling so withholding never calls `rejection/1`.
-6. Add generated-module tests for unique, ambiguous, impossible, and symbolic recovery.
+5. Compare complete monitoring consequences before invoking a verdict or continuation.
+6. Keep exact event identity as optional metadata.
+7. Change generated missing-event case handling so withholding never calls `rejection/1`.
+8. Add generated-module tests for unique, ambiguous, impossible, multi-event, and symbolic recovery.

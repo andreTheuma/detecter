@@ -26,10 +26,19 @@
 
 ### AGM Semantics
 
-- [ ] **AGM-01**: Missing-event handling never treats a list of candidate states as a single state.
-- [ ] **AGM-02**: Generated system-information data preserves duplicate state-pair transitions so event ambiguity is detectable.
-- [ ] **AGM-03**: Missing-event recovery deduces only singleton states and events.
-- [ ] **AGM-04**: Ambiguous, impossible, or symbolic-range recovery returns `withhold` rather than acceptance or rejection.
+- [x] **AGM-01**: Missing-event handling never treats a list of candidate states as a single state.
+- [x] **AGM-02**: Generated system-information data preserves duplicate state-pair transitions so every compatible event consequence can be considered.
+- [x] **AGM-03**: Missing-event recovery proceeds only after singleton state inference and a singleton monitoring consequence; exact event recovery is optional.
+- [x] **AGM-04**: Impossible or ambiguous state inference, conflicting consequences, and unproven symbolic consequences return `withhold` rather than acceptance or rejection.
+- [x] **AGM-05**: A symbolic event descriptor may proceed only when the generated monitor proves one consequence over its complete represented domain.
+
+### AGM Architecture and Academic Alignment
+
+- [x] **ENG-01**: Reusable AGM runtime inference and consequence aggregation are extracted from `maxhml_eval.erl` behind an explicit interface.
+- [x] **ENG-02**: Property-specific AGM code generation is separated from maxHML semantic traversal.
+- [x] **ENG-03**: The extracted AGM engine has focused tests independent of generated monitor orchestration.
+- [x] **ACAD-01**: Every supplied thesis chapter is reviewed after extraction and recorded as amended or verified unchanged with code/test evidence.
+- [x] **ACAD-02**: Thesis implementation listings and architectural claims describe the post-refactor module boundaries and runtime dependency accurately.
 
 ### Verdict Semantics
 
@@ -97,10 +106,13 @@
 | GEN-01 | Phase 3 | Complete |
 | GEN-02 | Phase 3 | Complete |
 | GEN-03 | Phase 3 | Complete |
-| AGM-01 | Phase 4 | Pending |
-| AGM-02 | Phase 4 | Pending |
-| AGM-03 | Phase 4 | Pending |
-| AGM-04 | Phase 4 | Pending |
+| AGM-01 | Phase 4 | Complete |
+| AGM-02 | Phase 4 | Complete |
+| AGM-03 | Phase 4 | Complete |
+| AGM-04 | Phase 4 | Complete |
+| AGM-05 | Phase 4 | Complete |
+| ENG-01..ENG-03 | Phase 4.1 | Complete |
+| ACAD-01..ACAD-02 | Phase 4.1 | Complete |
 | VERD-01 | Phase 5 | Pending |
 | VERD-02 | Phase 5 | Pending |
 | VERD-03 | Phase 5 | Pending |
@@ -110,10 +122,10 @@
 | CLN-01..CLN-05 | Phases 18-22 | Backlog |
 
 **Coverage:**
-- v0.1 requirements: 17 total
-- Mapped to phases: 17
+- v0.1 requirements: 23 total
+- Mapped to phases: 23
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-24*
-*Last updated: 2026-06-26 after Phase 3 completion.*
+*Last updated: 2026-07-01 after Phase 4.1 verification.*

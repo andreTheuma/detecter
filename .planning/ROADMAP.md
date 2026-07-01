@@ -6,7 +6,7 @@ This roadmap tracks the remediation work needed to bring the detectEr codebase i
 
 ## Milestones
 
-- **v0.1 Thesis Claim Stabilization** - Phases 1-5. Current active remediation target; Phases 1-3 complete.
+- **v0.1 Thesis Claim Stabilization** - Phases 1-5, including inserted Phase 4.1. Current active remediation target; Phases 1-4.1 complete.
 - **v0.2 System Information Robustness** - Phases 6-9. Planned follow-up.
 - **v0.3 Runtime Hardening** - Phases 10-13. Planned follow-up.
 - **v0.4 Research Evidence and Thesis Traceability** - Phases 14-17. Planned follow-up.
@@ -59,23 +59,43 @@ Plans:
 - [x] 03-02: Add compile checks for representative generated monitors.
 
 #### Phase 4: Sound AGM State Regeneration
-**Goal:** Make missing-event regeneration deterministic and withholding by default when inference is not unique.
+**Goal:** Make missing-event regeneration depend on singleton state inference and a deterministic monitoring consequence.
 **Depends on:** Phase 3.
 **Success Criteria** (what must be TRUE):
   1. Missing-event handling never treats a list of candidate states as a single state.
-  2. Duplicate state-pair transitions are preserved so ambiguous events can be detected.
-  3. The monitor deduces only singleton missing states and events.
-  4. Ambiguous, impossible, or symbolic-range deductions return `withhold` rather than a verdict.
+  2. Duplicate state-pair transitions are preserved so every compatible event consequence is considered.
+  3. The monitor proceeds only after singleton state inference and a singleton complete consequence signature.
+  4. Several concrete or symbolic events may proceed only when all represented events have one proven monitoring consequence.
+  5. Impossible or ambiguous state inference, conflicting consequences, and unproven symbolic consequences return `withhold` rather than a verdict.
 **Plans:** TBD
 
 Plans:
 - [x] 04-01: Preserve transition multiplicity in generated system-information data.
-- [ ] 04-02: Replace current transition validation with singleton deduction.
-- [ ] 04-03: Add tests for unique, ambiguous, impossible, and symbolic missing-event cases.
+- [x] 04-02: Replace current transition validation with singleton state and monitoring-consequence resolution.
+- [x] 04-03: Add tests for unique, ambiguous, impossible, multi-event, and symbolic missing-event cases.
+
+#### Phase 4.1: AGM Engine Extraction and Thesis Reconciliation
+**Goal:** Extract reusable AGM runtime and code-generation responsibilities from `maxhml_eval.erl`, then reconcile every supplied thesis chapter with the post-refactor architecture and verified behavior.
+**Depends on:** Phase 4, including Plan 04-03 characterization tests.
+**Blocks:** Phase 5.
+**Success Criteria** (what must be TRUE):
+  1. Pure AGM state inference, descriptor membership, and consequence aggregation live behind an explicit runtime interface.
+  2. Property-specific AGM code generation is separated from maxHML semantic traversal.
+  3. Focused engine tests and all Phase 4 generated-monitor characterization tests pass unchanged.
+  4. Every supplied thesis chapter is recorded as amended or verified unchanged with code and test evidence.
+  5. Implementation listings and architectural claims describe the post-refactor modules and runtime dependency accurately.
+**Plans:** 3
+
+Planning scope: `.planning/phases/04.1-agm-engine-extraction-and-thesis-reconciliation/04.1-SCOPE.md`
+
+Plans:
+- [x] 04.1-01: Extract and directly test the pure AGM runtime engine.
+- [x] 04.1-02: Extract AGM code generation and generated runtime adapters from `maxhml_eval`.
+- [x] 04.1-03: Reconcile all supplied thesis chapters and regenerate verification evidence.
 
 #### Phase 5: Irrevocability and Verdict Semantics
 **Goal:** Verify that generated verdicts are sound and cannot be retracted after missing-event recovery.
-**Depends on:** Phase 4.
+**Depends on:** Phase 4.1.
 **Success Criteria** (what must be TRUE):
   1. A recovered trace produces the same verdict as its corresponding complete trace when recovery is deterministic.
   2. Ambiguous missing traces do not produce eager rejection or acceptance verdicts.

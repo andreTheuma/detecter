@@ -2,35 +2,35 @@
 gsd_state_version: '1.0'
 status: in_progress
 progress:
-  total_phases: 22
-  completed_phases: 3
-  total_plans: 48
-  completed_plans: 8
-  percent: 17
+  total_phases: 23
+  completed_phases: 5
+  total_plans: 51
+  completed_plans: 13
+  percent: 25
 ---
 
 # Project State
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-06-29)
+See: `.planning/PROJECT.md` (updated 2026-07-01)
 
 **Core value:** Generated monitors must only emit verdicts that are sound and irrevocable for the traced system model, especially when traces contain missing events.
-**Current focus:** Phase 4: Sound AGM State Regeneration
+**Current focus:** Phase 5: Irrevocability and Verdict Semantics
 
 ## Current Position
 
-Phase: 4 of 22 (Sound AGM State Regeneration)
-Plan: 2 of 3 in current phase
-Status: In progress - ready for co-op execution of 04-02
-Last activity: 2026-07-01 - Resumed Plan 04-02 and corrected its state notation to match the thesis: `X0` is the known state before the missing event and `X1` is the inferred state after it.
+Phase: 5 of 23 (Irrevocability and Verdict Semantics)
+Plan: Not yet planned
+Status: Ready for planning - Phase 4.1 verified complete
+Last activity: 2026-07-01 - Extracted pure AGM runtime and code generation, passed 54 default EUnit checks, and reconciled all eight supplied thesis chapters.
 
-Progress: [##--------] 17%
+Progress: [###-------] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 13
 - Average duration: not tracked yet
 - Total execution time: not tracked yet
 
@@ -41,7 +41,8 @@ Progress: [##--------] 17%
 | 1. Test Harness Baseline | 3/3 | not tracked | not tracked |
 | 2. Parser Contract Alignment | 2/2 | not tracked | not tracked |
 | 3. Generated Monitor Compile Correctness | 2/2 | not tracked | not tracked |
-| 4. Sound AGM State Regeneration | 1/3 | not tracked | not tracked |
+| 4. Sound AGM State Regeneration | 3/3 | not tracked | not tracked |
+| 4.1 AGM Engine Extraction and Thesis Reconciliation | 3/3 | not tracked | not tracked |
 
 ## Accumulated Context
 
@@ -64,29 +65,45 @@ Decisions are logged in `.planning/PROJECT.md` Key Decisions table.
 - Phase 3: `make compile-test` and `make test` both pass after the state-update arity fix.
 - Phase 3: `generated_monitor_smoke_test` now uses separate temporary output directories for `prop_no_leak`, `prop_no_failure`, and `prop_correct_start` so generated module names cannot collide across properties.
 - Phase 3: Regression coverage asserts generated sources do not contain the old invalid `update_current_state()` call before compiling them.
-- Phase 4: Generated `init_transitions/0` must preserve duplicate `{Src, Dst}` rows, so AGM can detect ambiguous event recovery.
-- Phase 4: `handle_missing_event/1` should return `{ok, Recovery}` only for singleton state and singleton concrete event recovery.
-- Phase 4: Ambiguous, impossible, or symbolic/ranged recovery must return `{withhold, Reason}` rather than rejection.
+- Phase 4: Generated `init_transitions/0` must preserve duplicate `{Src, Dst}` rows so AGM can compare every candidate event's monitoring consequence.
+- Phase 4: `handle_missing_event/1` returns `{ok, Recovery}` after singleton state recovery while preserving every event descriptor compatible with the inferred transition.
+- Phase 4: Generated monitor branches proceed only when every candidate event produces the same continuation or terminal verdict, including identical bound values.
+- Phase 4: Event multiplicity and symbolic descriptors do not automatically require withholding; conflicting consequences or an inability to prove symbolic uniformity do.
+- Phase 4: Exact event recovery is optional metadata and does not gate an otherwise deterministic monitoring consequence.
 - Phase 4: Phase 5 remains responsible for complete-trace versus recovered-trace verdict equivalence and irrevocability regression tests.
 - Phase 4 plan 04-01: Generated transitions are ordered four-field rows containing source, destination, event descriptor, and condition predicate; no active AGM helper converts from a map.
 - Phase 4 plan 04-01: The obsolete `parse_sys_info_event/1` name and commented map-based deduction prototype were removed.
 - Phase 4 plan 04-01: The generated `NULL` condition now returns the boolean result of `Event =:= null`, matching its literal descriptor.
-- Phase 4 documentation: The thesis now defines recovery using singleton state sets and a singleton concrete event-candidate set; symbolic, ambiguous, and impossible recovery explicitly withhold.
+- Phase 4 plan 04-02: Generated `candidate_event_specs/2` preserves distinct descriptors for `X0 -> X1`, and `handle_missing_event/1` stores scalar `X1`.
+- Phase 4 plan 04-02: Consequences are compared by `{verdict, Verdict}` or `{continue, Function, BoundValues}`; unsupported symbolic proofs return `unproven_consequence`.
+- Phase 4 documentation: The thesis defines recovery using singleton state sets and a singleton monitoring-consequence set; exact event recovery is an optional refinement.
 - Phase 4 notation: The thesis uses `X0` for the known source state immediately before the missing event and `X1` for the inferred destination immediately after it. Plan 04-02 generated names must preserve this distinction.
 - Phase 4 documentation: Each AGM implementation step now includes an anchored trace snapshot; blue emphasis identifies only the information introduced by that step.
+- Phase 4 plan 04-03: `generated_agm_recovery_test` compiles generated modules with test-only `export_all` and verifies both generated AGM helpers and actual generated monitor-state behavior.
+- Phase 4 plan 04-03: A single literal descriptor yields `{known, Event}` metadata; multiple literals and symbolic descriptors retain `unknown` metadata without blocking a uniform consequence.
+- Phase 4 plan 04-03: Concrete candidates with one signature and a symbolic domain outside the equality boundary continue; conflicting concrete/symbolic signatures and unsupported symbolic guard proofs withhold.
+- Phase 4 plan 04-03: The default test target now runs 24 tracing, 5 parser, 3 generated compile-smoke, and 8 generated AGM recovery tests.
+- Phase 4.1 architecture: Complete Phase 4 characterization tests before extracting a pure AGM runtime engine and a separate AGM code-generation module.
+- Phase 4.1 academic gate: Review every supplied thesis chapter after the refactor and record `amended` or `verified unchanged` with code and test evidence.
+- Phase 4.1 plan 04.1-01: `agm_engine` is pure and receives transition data and reduction functions explicitly; 13 direct tests exercise its contract.
+- Phase 4.1 plan 04.1-02: `maxhml_agm_codegen` owns transition/reduction AST and generated effect boundaries; `maxhml_eval` delegates through four callbacks.
+- Phase 4.1 plan 04.1-02: The eight Phase 4 semantic cases remain; one architecture check proves generated source calls `agm_engine` and omits the old collector.
+- Phase 4.1 plan 04.1-03: Four thesis chapters were amended and four verified unchanged; the complete 129-page thesis build passes.
+
+### Roadmap Evolution
+
+- Phase 4.1 inserted after Phase 4: extract the AGM engine and reconcile the thesis chapter by chapter before Phase 5 verdict work.
 
 ### Pending Todos
 
-- Phase 4 plan 04-02: Replace current transition validation with singleton deduction.
-- Phase 4 plan 04-03: Add tests for unique, ambiguous, impossible, and symbolic missing-event cases.
-- Re-run and update the thesis AGM terminal listings after plans 04-02 and 04-03 produce verified generated output.
+- Review and commit the accumulated Phase 4 Plan 04-03 and Phase 4.1 code, planning, and thesis changes.
+- Plan Phase 5 complete-trace equivalence, no-eager-verdict, and irrevocability tests.
 
 ### Blockers/Concerns
 
 - GSD helper runtime previously failed to load `../../../package.json`; planning docs are currently maintained directly.
 - `detecter/test/regeneration/automated_event_streamer.erl` is untracked and needs an ownership decision before cleanup.
-- The thesis now documents the intended 04-02 `{ok, Recovery}` / `{withhold, Reason}` behavior; current generated recovery code does not yet fully satisfy it.
-- Current generated `handle_missing_event/1` calls its post-missing candidate list `S_X0`; Plan 04-02 must rename or replace this misleading variable so it corresponds to thesis state `X1`.
+- The full thesis build succeeds; it still reports existing duplicate labels `lst:compileandspawn` and `lst:compileandspawn3` plus layout/font warnings.
 
 ## Deferred Items
 
@@ -100,5 +117,5 @@ Decisions are logged in `.planning/PROJECT.md` Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-07-01
-Stopped at: Plan 04-02 resumed in co-op mode; next task is generating the singleton candidate-state helper.
-Resume file: `.planning/phases/04-sound-agm-state-regeneration/04-02-PLAN.md`
+Stopped at: Phase 4.1 implementation, tests, thesis reconciliation, and verification complete; all changes remain uncommitted for user review.
+Resume file: `.planning/phases/04.1-agm-engine-extraction-and-thesis-reconciliation/04.1-VERIFICATION.md`

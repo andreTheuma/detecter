@@ -1,13 +1,13 @@
 # Phase 4: Sound AGM State Regeneration - Context
 
 **Gathered:** 2026-06-26
-**Status:** Ready for planning
+**Status:** Implemented and verified
 **Source:** GSD discuss-phase manual path. The GSD helper runtime failed with `Cannot find module '../../../package.json'`, so context was captured directly from repository and thesis material.
 
 <domain>
 ## Phase Boundary
 
-Phase 4 makes automaton-guided missing-event recovery sound by construction. The generated monitor must preserve enough system-transition information to detect ambiguity, infer only singleton states/events, and withhold whenever recovery is ambiguous, impossible, or symbolic.
+Phase 4 makes automaton-guided missing-event recovery sound by construction. The generated monitor must preserve enough system-transition information to infer a singleton post-missing state and compare the complete monitoring consequence of every compatible missing event. Exact event identity is optional when all candidates produce the same consequence.
 
 This phase does not prove complete-trace versus recovered-trace verdict equivalence. That belongs to Phase 5. This phase also does not redesign the `.spec` grammar, normalize generator variable names, or fix ETS/session isolation; those are tracked in later phases.
 </domain>
@@ -28,17 +28,17 @@ This phase does not prove complete-trace versus recovered-trace verdict equivale
   - `{literal, -1}`
   - `{symbolic, natural_integer}`
   - `{symbolic, any_integer_except, 0}`
-  - `{symbolic, null}` for the START/NULL row if retained in the generated table
+  - `{literal, null}` for the START/NULL row if retained in the generated table
 - `ConditionFun` remains the runtime predicate used by reachable/predecessor helpers.
 
 ### Recovery Contract
-- `handle_missing_event/1` must return `{ok, Recovery}` only when the missing-event recovery is deterministic.
+- `handle_missing_event/1` must return `{ok, Recovery}` only when state recovery is deterministic.
 - Deterministic recovery means:
   1. The inferred state immediately after the missing event is a singleton.
-  2. The inferred state after the next observed event is a singleton where needed for the deduction.
-  3. The event between the last known state and the inferred missing-event state is exactly one concrete literal event.
+  2. Every event descriptor between the last known and inferred states is preserved.
+  3. Reducing every represented event through the current monitor produces one complete consequence signature.
 - Recovery failure must return `{withhold, Reason}` rather than `false` or rejection.
-- Expected reasons include `ambiguous_state`, `ambiguous_event`, `impossible_recovery`, and `symbolic_event`.
+- Expected reasons include `ambiguous_state`, `impossible_recovery`, `ambiguous_consequence`, and `unproven_consequence`.
 
 ### Withholding Semantics
 - Withholding is not a verdict. It must not call `acceptance/1` or `rejection/1`.
@@ -46,8 +46,9 @@ This phase does not prove complete-trace versus recovered-trace verdict equivale
 - This aligns with the thesis claim that monitors preserve soundness by withholding rather than eagerly accepting or rejecting when inference is not deterministic.
 
 ### Symbolic Event Handling
-- Symbolic or ranged event recovery, such as `N` or `Z \ 0`, must withhold.
-- A symbolic transition may still be used as a predicate for state reachability, but it cannot be returned as a concrete regenerated missing event in Phase 4.
+- Symbolic or ranged descriptors, such as `N` or `Z \ 0`, do not identify one concrete missing event.
+- They may nevertheless support monitoring when the generated reducer proves one consequence over the complete represented domain.
+- Unsupported domains, guards, or unresolved event-dependent continuations must withhold conservatively.
 
 ### Phase 5 Boundary
 - Phase 4 may update generated monitor state to the recovered state after the missing event, preserving the existing "retrace last event" style if needed.
@@ -61,9 +62,9 @@ Downstream planning and implementation must read these before changing code.
 
 ### Thesis Claims
 - `/Users/andretheuma/university/Master-Thesis/Documentation/Thesis/chap1/introduction_main.tex` — soundness and irrevocability aims; deterministic inferred states.
-- `/Users/andretheuma/university/Master-Thesis/Documentation/Thesis/chap3/methodology.tex` — methodology for missing-event state inference and event deduction.
-- `/Users/andretheuma/university/Master-Thesis/Documentation/Thesis/chap3/implementation.tex` — implementation narrative for `init_transitions/0`, state regeneration, and `find_event/2`.
-- `/Users/andretheuma/university/Master-Thesis/Documentation/Thesis/chap4/results_and_discussion_main.tex` — discussion stating that monitors withhold rather than eagerly accept/reject and do not give verdicts for ranges.
+- `/Users/andretheuma/university/Master-Thesis/Documentation/Thesis/chap3/methodology.tex` — methodology for singleton state inference and deterministic monitoring consequences.
+- `/Users/andretheuma/university/Master-Thesis/Documentation/Thesis/chap3/implementation.tex` — implementation narrative for transition descriptors, state regeneration, and consequence aggregation.
+- `/Users/andretheuma/university/Master-Thesis/Documentation/Thesis/chap4/results_and_discussion_main.tex` — bounded evidence for concrete and symbolic continuation/withholding behavior.
 
 ### Code
 - `detecter/src/synthesis/maxhml_eval.erl` — generated transition table, AGM helpers, missing-event branches, state updates.
@@ -81,7 +82,7 @@ Downstream planning and implementation must read these before changing code.
 - Current generated AGM helper names are misspelled as `preceeding_*`; preserve spelling during Phase 4 unless a separate rename is deliberately planned.
 - Current helper functions fold over `maps:to_list(init_transitions())`; switching `init_transitions/0` to a list requires updating every generated helper fold together.
 
-## Current Defect
+## Defect Addressed
 
 Current generated code computes `S_X0` as a list of candidates and passes that list into `validate_state_transition/2` as though it were a single state:
 
@@ -93,7 +94,7 @@ case validate_state_transition(LastKnownState, S_X0) of
 end
 ```
 
-This loses the distinction between "no recovery", "ambiguous recovery", and "unique recovery", and later generated branches can treat `false` as rejection. That contradicts the thesis soundness boundary.
+This lost the distinction between "no recovery", "ambiguous recovery", and "unique recovery", and later generated branches could treat `false` as rejection. Plans 04-02 and 04-03 replaced this path with singleton state resolution, monitoring-consequence aggregation, and explicit withholding.
 </code_context>
 
 <deferred>
