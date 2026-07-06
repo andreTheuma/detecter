@@ -7,6 +7,9 @@
 -export([
     generate_missing_event_recovery_case/1,
     generate_monitor_reduction_fun/1,
+    generate_replay_bridge/4,
+    generate_receive_state_replay/3,
+    generate_checkpoint_clause/3,
     generate_sys_info_function/1,
     generate_all_states/0,
     generate_state_management/0,
@@ -26,6 +29,7 @@ generate_missing_event_recovery_case(ReductionFun) ->
     RecoveryReasonVar = erl_syntax:variable('RecoveryReason'),
     ConsequenceReasonVar = erl_syntax:variable('ConsequenceReason'),
     ContinuationVar = erl_syntax:variable('Continuation'),
+    LookaheadVar = erl_syntax:variable('LookaheadEnvelope'),
     ConsequenceCase = erl_syntax:case_expr(
         erl_syntax:application(
             erl_syntax:atom(resolve_monitoring_consequence),
@@ -43,7 +47,13 @@ generate_missing_event_recovery_case(ReductionFun) ->
                     ])
                 ])],
                 [],
-                [erl_syntax:application(ContinuationVar, [])]
+                [
+                    erl_syntax:application(
+                        erl_syntax:atom(commit_recovery_state),
+                        [RecoveryVar]
+                    ),
+                    erl_syntax:application(ContinuationVar, [LookaheadVar])
+                ]
             ),
             erl_syntax:clause(
                 [erl_syntax:tuple([
@@ -64,7 +74,8 @@ generate_missing_event_recovery_case(ReductionFun) ->
             erl_syntax:clause(
                 [erl_syntax:tuple([
                     erl_syntax:atom(ok),
-                    RecoveryVar
+                    RecoveryVar,
+                    LookaheadVar
                 ])],
                 [],
                 [ConsequenceCase]
@@ -217,17 +228,163 @@ monitor_reduction_pair(Phi, NextFunctionName, NextFunctionArgs) ->
                     erl_syntax:list(NextFunctionArgs)
                 ])
         end,
+    LookaheadVar = erl_syntax:variable('LookaheadEnvelope'),
+    ContinuationTarget =
+        case Phi of
+            {?HML_TRU, _} ->
+                erl_syntax:application(
+                    erl_syntax:atom(NextFunctionName),
+                    NextFunctionArgs
+                );
+            {?HML_FLS, _} ->
+                erl_syntax:application(
+                    erl_syntax:atom(NextFunctionName),
+                    NextFunctionArgs
+                );
+            _ ->
+                erl_syntax:application(
+                    erl_syntax:atom(replay_function_name(NextFunctionName)),
+                    [LookaheadVar | NextFunctionArgs]
+                )
+        end,
     Continuation = erl_syntax:fun_expr([
         erl_syntax:clause(
+            [LookaheadVar],
             [],
-            [],
-            [erl_syntax:application(
-                erl_syntax:atom(NextFunctionName),
-                NextFunctionArgs
-            )]
+            [ContinuationTarget]
         )
     ]),
     erl_syntax:tuple([Signature, Continuation]).
+
+generate_replay_bridge(
+    FunctionName,
+    FunctionArgs,
+    TargetFunctionName,
+    TargetFunctionArgs
+) ->
+    PendingVar = erl_syntax:variable('PendingEnvelope'),
+    erl_syntax:function(
+        erl_syntax:atom(replay_function_name(FunctionName)),
+        [erl_syntax:clause(
+            [PendingVar | FunctionArgs],
+            [],
+            [erl_syntax:application(
+                erl_syntax:atom(replay_function_name(TargetFunctionName)),
+                [PendingVar | TargetFunctionArgs]
+            )]
+        )]
+    ).
+
+generate_receive_state_replay(FunctionName, FunctionArgs, Branches) ->
+    PendingVar = erl_syntax:variable('PendingEnvelope'),
+    PendingFunctionName = pending_function_name(FunctionName),
+    DirectClauses = [
+        erl_syntax:clause(
+            [maps:get(pattern, Branch)],
+            maps:get(guard, Branch),
+            maps:get(ordinary_body, Branch)
+        )
+        || Branch <- Branches
+    ],
+    PendingReceiveClauses = [
+        erl_syntax:clause(
+            [maps:get(pattern, Branch)],
+            maps:get(guard, Branch),
+            pending_branch_body(PendingVar, Branch)
+        )
+        || Branch <- Branches
+    ] ++ generate_checkpoint_clause(
+        FunctionName,
+        PendingFunctionName,
+        [PendingVar | FunctionArgs]
+    ),
+    PendingReceive = erl_syntax:receive_expr(PendingReceiveClauses),
+    PendingDispatch = erl_syntax:case_expr(
+        PendingVar,
+        DirectClauses ++ [
+            erl_syntax:clause(
+                [erl_syntax:underscore()],
+                [],
+                [PendingReceive]
+            )
+        ]
+    ),
+    [
+        erl_syntax:function(
+            erl_syntax:atom(replay_function_name(FunctionName)),
+            [erl_syntax:clause(
+                [PendingVar | FunctionArgs],
+                [],
+                [erl_syntax:application(
+                    erl_syntax:atom(PendingFunctionName),
+                    [PendingVar | FunctionArgs]
+                )]
+            )]
+        ),
+        erl_syntax:function(
+            erl_syntax:atom(PendingFunctionName),
+            [erl_syntax:clause(
+                [PendingVar | FunctionArgs],
+                [],
+                [PendingDispatch]
+            )]
+        )
+    ].
+
+pending_branch_body(PendingVar, Branch) ->
+    case maps:get(terminal, Branch) of
+        true ->
+            maps:get(ordinary_body, Branch);
+        false ->
+            maps:get(state_updates, Branch) ++ [
+                erl_syntax:application(
+                    erl_syntax:atom(
+                        replay_function_name(
+                            maps:get(next_function, Branch)
+                        )
+                    ),
+                    [PendingVar | maps:get(next_args, Branch)]
+                )
+            ]
+    end.
+
+-ifdef(TEST).
+generate_checkpoint_clause(StateName, ContinueFunctionName, ContinueArgs) ->
+    RefVar = erl_syntax:variable('CheckpointRef'),
+    TestPidVar = erl_syntax:variable('CheckpointPid'),
+    [
+        erl_syntax:clause(
+            [erl_syntax:tuple([
+                erl_syntax:atom(agm_checkpoint),
+                RefVar,
+                TestPidVar
+            ])],
+            [],
+            [
+                erl_syntax:infix_expr(
+                    TestPidVar,
+                    erl_syntax:operator('!'),
+                    erl_syntax:tuple([
+                        erl_syntax:atom(agm_checkpoint),
+                        RefVar,
+                        erl_syntax:application(
+                            erl_syntax:atom(self),
+                            []
+                        ),
+                        erl_syntax:atom(StateName)
+                    ])
+                ),
+                erl_syntax:application(
+                    erl_syntax:atom(ContinueFunctionName),
+                    ContinueArgs
+                )
+            ]
+        )
+    ].
+-else.
+generate_checkpoint_clause(_StateName, _ContinueFunctionName, _ContinueArgs) ->
+    [].
+-endif.
 
 generate_symbolic_monitor_reduction_clauses(
     [{_, _, [], Phi, NextFunctionName, NextFunctionArgs}],
@@ -599,7 +756,8 @@ generate_state_management() ->
 agm_generation() ->
     lists:flatten([
         generate_transition_adapters(),
-        generate_handle_missing_event_function()
+        generate_handle_missing_event_function(),
+        generate_commit_recovery_state_function()
     ]).
 
 generate_transition_adapters() ->
@@ -669,8 +827,8 @@ generate_handle_missing_event_function() ->
     FromVar = erl_syntax:variable('From'),
     SourceVar = erl_syntax:variable('SourceState'),
     PayloadVar = erl_syntax:variable('Payload'),
+    LookaheadVar = erl_syntax:variable('LookaheadEnvelope'),
     RecoveryVar = erl_syntax:variable('Recovery'),
-    InferredVar = erl_syntax:variable('InferredState'),
     ReasonVar = erl_syntax:variable('Reason'),
     RecoverCall = remote_call(
         agm_engine,
@@ -694,22 +852,10 @@ generate_handle_missing_event_function() ->
                 ])],
                 [],
                 [
-                    match(
-                        InferredVar,
-                        remote_call(
-                            maps,
-                            get,
-                            [
-                                erl_syntax:atom(inferred_state),
-                                RecoveryVar
-                            ]
-                        )
-                    ),
-                    ets_insert(previous_state, SourceVar),
-                    ets_insert(current_state, InferredVar),
                     erl_syntax:tuple([
                         erl_syntax:atom(ok),
-                        RecoveryVar
+                        RecoveryVar,
+                        LookaheadVar
                     ])
                 ]
             ),
@@ -735,7 +881,7 @@ generate_handle_missing_event_function() ->
     ]),
     ReceiveExpression = erl_syntax:receive_expr([
         erl_syntax:clause(
-            [TracePattern],
+            [match(LookaheadVar, TracePattern)],
             [],
             [RecoveryCase]
         )
@@ -752,6 +898,40 @@ generate_handle_missing_event_function() ->
                 ]
             )
         ]
+    )].
+
+generate_commit_recovery_state_function() ->
+    RecoveryVar = erl_syntax:variable('Recovery'),
+    SourceVar = erl_syntax:variable('SourceState'),
+    InferredVar = erl_syntax:variable('InferredState'),
+    [erl_syntax:function(
+        erl_syntax:atom(commit_recovery_state),
+        [erl_syntax:clause(
+            [RecoveryVar],
+            [],
+            [
+                match(
+                    SourceVar,
+                    remote_call(
+                        maps,
+                        get,
+                        [erl_syntax:atom(source_state), RecoveryVar]
+                    )
+                ),
+                match(
+                    InferredVar,
+                    remote_call(
+                        maps,
+                        get,
+                        [erl_syntax:atom(inferred_state), RecoveryVar]
+                    )
+                ),
+                ets_insert_many([
+                    {previous_state, SourceVar},
+                    {current_state, InferredVar}
+                ])
+            ]
+        )]
     )].
 
 zero_arity_engine_adapter(Name, EngineFunction, EngineArgs) ->
@@ -801,6 +981,28 @@ ets_insert(Key, Value) ->
             ])
         ]
     ).
+
+ets_insert_many(Entries) ->
+    remote_call(
+        ets,
+        insert,
+        [
+            erl_syntax:atom(sus_state),
+            erl_syntax:list([
+                erl_syntax:tuple([
+                    erl_syntax:atom(Key),
+                    Value
+                ])
+                || {Key, Value} <- Entries
+            ])
+        ]
+    ).
+
+replay_function_name(FunctionName) ->
+    list_to_atom("replay_" ++ atom_to_list(FunctionName)).
+
+pending_function_name(FunctionName) ->
+    list_to_atom("pending_" ++ atom_to_list(FunctionName)).
 
 match(Pattern, Expression) ->
     erl_syntax:infix_expr(

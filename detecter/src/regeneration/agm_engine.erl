@@ -33,7 +33,7 @@
     {verdict, yes | no} |
     {continue, atom(), [term()]}.
 -type reduction() ::
-    {consequence_signature(), fun(() -> term())}.
+    {consequence_signature(), fun((term()) -> term())}.
 
 -spec get_system_states([transition()]) -> [state()].
 get_system_states(Transitions) ->
@@ -147,7 +147,7 @@ recover_missing_event(Transitions, SourceState, NextEvent) ->
     {ok, #{
         consequence := consequence_signature(),
         event := {known, term()} | unknown,
-        continuation := fun(() -> term())
+        continuation := fun((term()) -> term())
     }} |
     {withhold,
         impossible_recovery |

@@ -237,10 +237,16 @@ generate_function(Node = {?HML_MAX, LineNumber, _Var = {?HML_VAR, _, _}, Phi}, _
         erl_syntax:atom(FunctionName),
         [Clause]
     ),
+    ReplayBridge = maxhml_agm_codegen:generate_replay_bridge(
+        FunctionName,
+        FunctionArgs,
+        NextFunctionName,
+        NextFunctionArgs
+    ),
     
     ?TRACE("Generated function ~p. ~n", [FunctionName]),
 
-    [Function | lists:flatten([generate_function(Phi, _Opts)])];
+    [Function, ReplayBridge | lists:flatten([generate_function(Phi, _Opts)])];
 generate_function(
     OuterNode =
         {?HML_AND, _,
@@ -300,44 +306,53 @@ generate_function(
     BoundedVarsLeftClean= lists:usort(lists:filter(fun(Elem) -> not lists:member(Elem, ['_']) end, BoundVarsLeft)),
     BoundedVarsRightClean= lists:usort(lists:filter(fun(Elem) -> not lists:member(Elem, ['_']) end, BoundVarsRight)),
 
+    LeftStateUpdates =
+        case ?IS_TERMINATING_HML(PsiLeft) of
+            true ->
+                [];
+            false ->
+                [erl_syntax:application(
+                    erl_syntax:atom(update_current_state),
+                    lists:flatten([
+                        erl_syntax:variable(V)
+                        || V <- BoundedVarsLeftClean
+                    ])
+                )]
+        end,
+    RightStateUpdates =
+        case ?IS_TERMINATING_HML(PsiRight) of
+            true ->
+                [];
+            false ->
+                [erl_syntax:application(
+                    erl_syntax:atom(update_current_state),
+                    lists:flatten([
+                        erl_syntax:variable(V)
+                        || V <- BoundedVarsRightClean
+                    ])
+                )]
+        end,
+
     LeftNodeClause = erl_syntax:clause(
         [gen_eval:pat_tuple(PatPhiLeft)],
         GuardPhiLeft,
-
-        case ?IS_TERMINATING_HML(PsiLeft) of
-            true ->
-                [
-                    erl_syntax:application(
-                        erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs
-                    )
-                ];
-            _->
-                [
-                    erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedVarsLeftClean])),    
-                    erl_syntax:application(
-                        erl_syntax:atom(LeftNodeFunctionName), PsiLeftFunctionArgs
-                    )
-                ]
-            end
+        LeftStateUpdates ++ [
+            erl_syntax:application(
+                erl_syntax:atom(LeftNodeFunctionName),
+                PsiLeftFunctionArgs
+            )
+        ]
     ),
 
     RightNodeClause = erl_syntax:clause(
         [gen_eval:pat_tuple(PatPhiRight)],
         GuardPhiRight,
-
-         case ?IS_TERMINATING_HML(PsiRight) of
-            true ->
-                [erl_syntax:application(
-                        erl_syntax:variable(RightNodeFunctionName), PsiRightFunctionArgs
-                    )
-                ];
-            _ -> 
-                [erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedVarsRightClean])),
-                    erl_syntax:application(
-                        erl_syntax:variable(RightNodeFunctionName), PsiRightFunctionArgs
-                    )
-                ]
-            end
+        RightStateUpdates ++ [
+            erl_syntax:application(
+                erl_syntax:atom(RightNodeFunctionName),
+                PsiRightFunctionArgs
+            )
+        ]
     ),
 
     ReductionFun = maxhml_agm_codegen:generate_monitor_reduction_fun([
@@ -368,21 +383,52 @@ generate_function(
     ReceiveClause = erl_syntax:clause(
         CompositeFunctionArgs,
         none,
-        [erl_syntax:receive_expr([LeftNodeClause, RightNodeClause, MissingEventClause])]
+        [erl_syntax:receive_expr(
+            [LeftNodeClause, RightNodeClause, MissingEventClause]
+            ++ maxhml_agm_codegen:generate_checkpoint_clause(
+                CompositeFunctionName,
+                CompositeFunctionName,
+                CompositeFunctionArgs
+            )
+        )]
     ),
 
     Function = erl_syntax:function(
         erl_syntax:atom(CompositeFunctionName),
         [ReceiveClause]
     ),
+    ReplayFunctions = maxhml_agm_codegen:generate_receive_state_replay(
+        CompositeFunctionName,
+        CompositeFunctionArgs,
+        [
+            #{
+                pattern => gen_eval:pat_tuple(PatPhiLeft),
+                guard => GuardPhiLeft,
+                ordinary_body => erl_syntax:clause_body(LeftNodeClause),
+                terminal => ?IS_TERMINATING_HML(PsiLeft),
+                state_updates => LeftStateUpdates,
+                next_function => generate_function_name(PsiLeft),
+                next_args => PsiLeftFunctionArgs
+            },
+            #{
+                pattern => gen_eval:pat_tuple(PatPhiRight),
+                guard => GuardPhiRight,
+                ordinary_body => erl_syntax:clause_body(RightNodeClause),
+                terminal => ?IS_TERMINATING_HML(PsiRight),
+                state_updates => RightStateUpdates,
+                next_function => generate_function_name(PsiRight),
+                next_args => PsiRightFunctionArgs
+            }
+        ]
+    ),
 
     ?TRACE("Generated function ~p. ~n", [CompositeFunctionName]),
-    [
-        Function
-        | lists:flatten([
-            generate_function(InnerLeftNode, _Opts), generate_function(InnerRightNode, _Opts)
-        ])
-    ];
+    [Function]
+    ++ ReplayFunctions
+    ++ lists:flatten([
+        generate_function(InnerLeftNode, _Opts),
+        generate_function(InnerRightNode, _Opts)
+    ]);
 generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opts) ->
     BoundVars = extract_bound_vars_from_guard(Node),
     FunctionName = generate_function_name(Node),
@@ -409,10 +455,24 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
 
     % remove extra fluff for function call 
     BoundedVars=lists:filter(fun(Elem) -> not lists:member(Elem, ['_']) end, BoundVars),
+    StateUpdates = [
+        erl_syntax:application(
+            erl_syntax:atom(update_current_state),
+            lists:flatten([
+                erl_syntax:variable(V)
+                || V <- BoundedVars
+            ])
+        )
+    ],
     Clause = erl_syntax:clause(
         [gen_eval:pat_tuple(Pat)],
         Guard,
-        [erl_syntax:application(erl_syntax:atom(update_current_state), lists:flatten([erl_syntax:variable(V) || V <- BoundedVars])),erl_syntax:application(erl_syntax:atom(NextFunctionName), NextFunctionArgs)]
+        StateUpdates ++ [
+            erl_syntax:application(
+                erl_syntax:atom(NextFunctionName),
+                NextFunctionArgs
+            )
+        ]
     ),
 
     ReductionFun = maxhml_agm_codegen:generate_monitor_reduction_fun([
@@ -436,32 +496,78 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
     ReceiveClause = erl_syntax:clause(
         FunctionArgs,
         none,
-        [erl_syntax:receive_expr([Clause,MissingEventClause])]
+        [erl_syntax:receive_expr(
+            [Clause, MissingEventClause]
+            ++ maxhml_agm_codegen:generate_checkpoint_clause(
+                FunctionName,
+                FunctionName,
+                FunctionArgs
+            )
+        )]
     ),
 
     % remove extra fluff for function call 
-    Function = erl_syntax:function(
-        erl_syntax:atom(FunctionName),
+    {FunctionClauses, ReplayFunctions} =
         case ?IS_TERMINATING_HML(Phi) of
             true ->
                 ?TRACE("Terminating function detected - Atomic termination generated. ~n"),
-                % ! Using lists:nth here cause of the update_state -> we do not need to update state when giving a verdict...
-                [erl_syntax:clause(FunctionArgs, none, [lists:nth(2,erl_syntax:clause_body(Clause))])];
-            _ ->
+                {
+                    [erl_syntax:clause(
+                        FunctionArgs,
+                        none,
+                        [lists:nth(2, erl_syntax:clause_body(Clause))]
+                    )],
+                    []
+                };
+            false ->
                 case ?IS_RECURSIVE_HML(Phi) of
                     true ->
                         ?TRACE("Recursive function detected - Recursive call generated. ~n"),
-                        % ! Using lists:nth here cause of the update_state -> we do not need to update state during internal transitions...
-                        [erl_syntax:clause(FunctionArgs, none, [lists:nth(2,erl_syntax:clause_body(Clause))])];
-                    _ ->
-                        [ReceiveClause]
-                    end
-        end
+                        {
+                            [erl_syntax:clause(
+                                FunctionArgs,
+                                none,
+                                [lists:nth(2, erl_syntax:clause_body(Clause))]
+                            )],
+                            [maxhml_agm_codegen:generate_replay_bridge(
+                                FunctionName,
+                                FunctionArgs,
+                                NextFunctionName,
+                                NextFunctionArgs
+                            )]
+                        };
+                    false ->
+                        {
+                            [ReceiveClause],
+                            maxhml_agm_codegen:generate_receive_state_replay(
+                                FunctionName,
+                                FunctionArgs,
+                                [
+                                    #{
+                                        pattern => gen_eval:pat_tuple(Pat),
+                                        guard => Guard,
+                                        ordinary_body =>
+                                            erl_syntax:clause_body(Clause),
+                                        terminal => false,
+                                        state_updates => StateUpdates,
+                                        next_function => NextFunctionName,
+                                        next_args => NextFunctionArgs
+                                    }
+                                ]
+                            )
+                        }
+                end
+        end,
+    Function = erl_syntax:function(
+        erl_syntax:atom(FunctionName),
+        FunctionClauses
     ),
 
     ?TRACE("Generated function ~p. ~n", [FunctionName]),
 
-    [Function | lists:flatten([generate_function(Phi, _Opts)])].
+    [Function]
+    ++ ReplayFunctions
+    ++ lists:flatten([generate_function(Phi, _Opts)]).
 
 %% @public Generates the receive block for the function look up. This
 %% is the entry point for the look up of the function to be executed.

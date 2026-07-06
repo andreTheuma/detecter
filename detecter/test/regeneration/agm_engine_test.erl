@@ -37,16 +37,19 @@ equal_consequences_proceed_without_exact_event_test() ->
         inferred_state => s1,
         event_specs => [{literal, 0}, {literal, 1}]
     },
-    Continuation = fun() -> should_not_be_called end,
+    FirstContinuation = fun(_Envelope) -> first_callback end,
+    DuplicateContinuation = fun(_Envelope) -> duplicate_callback end,
     ReductionFun = fun
-        ({literal, Event}) when Event =:= 0; Event =:= 1 ->
-            {ok, [{{continue, state2, [5]}, Continuation}]}
+        ({literal, 0}) ->
+            {ok, [{{continue, state2, [5]}, FirstContinuation}]};
+        ({literal, 1}) ->
+            {ok, [{{continue, state2, [5]}, DuplicateContinuation}]}
     end,
     ?assertMatch(
         {ok, #{
             consequence := {continue, state2, [5]},
             event := unknown,
-            continuation := Continuation
+            continuation := FirstContinuation
         }},
         agm_engine:resolve_monitoring_consequence(Recovery, ReductionFun)
     ).
@@ -59,9 +62,11 @@ conflicting_consequences_withhold_test() ->
     },
     ReductionFun = fun
         ({literal, 0}) ->
-            {ok, [{{verdict, no}, fun() -> no end}]};
+            {ok, [{{verdict, no}, fun(_Envelope) -> no end}]};
         ({literal, 1}) ->
-            {ok, [{{continue, state2, [0]}, fun() -> continue end}]}
+            {ok, [
+                {{continue, state2, [0]}, fun(_Envelope) -> continue end}
+            ]}
     end,
     ?assertEqual(
         {withhold, ambiguous_consequence},
@@ -83,7 +88,7 @@ unknown_symbolic_proof_withholds_test() ->
     ).
 
 exact_literal_is_optional_metadata_test() ->
-    Reduction = fun() -> no end,
+    Reduction = fun(_Envelope) -> no end,
     Recovery = #{
         source_state => s0,
         inferred_state => s1,
@@ -101,6 +106,57 @@ exact_literal_is_optional_metadata_test() ->
                 {ok, [{{verdict, no}, Reduction}]}
             end
         )
+    ).
+
+envelope_callback_is_returned_without_invocation_test() ->
+    TestPid = self(),
+    LookaheadEnvelope = {{trace, source, send, 9, destination}, TestPid},
+    Continuation = fun(Envelope) ->
+        TestPid ! {callback_invoked, Envelope},
+        replayed
+    end,
+    Recovery = #{
+        source_state => s0,
+        inferred_state => s1,
+        event_specs => [{literal, 0}]
+    },
+    {ok, Consequence} = agm_engine:resolve_monitoring_consequence(
+        Recovery,
+        fun({literal, 0}) ->
+            {ok, [{{continue, state2, [5]}, Continuation}]}
+        end
+    ),
+    ?assertEqual(
+        {arity, 1},
+        erlang:fun_info(maps:get(continuation, Consequence), arity)
+    ),
+    receive
+        {callback_invoked, _} ->
+            ?assert(false)
+    after 0 ->
+        ok
+    end,
+    ?assertEqual(
+        replayed,
+        (maps:get(continuation, Consequence))(LookaheadEnvelope)
+    ),
+    ?assertEqual(
+        {callback_invoked, LookaheadEnvelope},
+        receive Message -> Message after 0 -> callback_not_invoked end
+    ).
+
+reduction_type_is_envelope_aware_test() ->
+    BeamPath = code:which(agm_engine),
+    SourcePath = filename:join([
+        filename:dirname(filename:dirname(BeamPath)),
+        "src",
+        "regeneration",
+        "agm_engine.erl"
+    ]),
+    {ok, Source} = file:read_file(SourcePath),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(Source, <<"fun((term()) -> term())">>)
     ).
 
 event_spec_membership_test_() ->
