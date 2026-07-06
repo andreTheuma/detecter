@@ -17,12 +17,18 @@ all: compile
 clean:
 	rm -f $(BIN)/*.beam $(BIN)/*.E $(BIN)/*.erl $(BIN)/*.tmp $(BIN)/*.app erl_crash.dump
 
+# Behaviour definitions are compiled in their own pass so that
+# implementations compiled afterwards resolve -behavior against ebin.
+BEHAVIOURS=$(SRC)/behavior/gen_file_poller.erl
+
 compile: clean
 	mkdir -p $(BIN)
-	erlc -pa $(BIN) +debug_info -W0 -I $(INCLUDE) -o $(BIN) $(call recursive,$(SRC),erl)
+	erlc -pa $(BIN) +debug_info -I $(INCLUDE) -o $(BIN) $(BEHAVIOURS)
+	erlc -pa $(BIN) +debug_info -I $(INCLUDE) -o $(BIN) $(call recursive,$(SRC),erl)
 
 compile-test: clean
 	mkdir -p $(BIN)
+	erlc -DTEST -pa $(BIN) +debug_info -I $(INCLUDE) -o $(BIN) $(BEHAVIOURS)
 	erlc -DTEST -pa $(BIN) +debug_info -I $(INCLUDE) -o $(BIN) $(call recursive,$(SRC),erl)
 	erlc -DTEST -pa $(BIN) -I $(INCLUDE) -o $(BIN) $(TEST_SRC)
 
@@ -35,6 +41,7 @@ test: compile-test
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(log_tracer_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(sys_info_parser_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(generated_monitor_smoke_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
+	erl -noshell -pa $(BIN) -eval 'case eunit:test(maxhml_synthesis_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(generated_agm_recovery_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 	erl -noshell -pa $(BIN) -eval 'case eunit:test(agm_engine_test, [verbose]) of error -> init:stop(1); Result -> Result end.' -s init stop
 

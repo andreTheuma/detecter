@@ -151,13 +151,142 @@
 %%% ----------------------------------------------------------------------------
 
 compile(File, Opts) ->
-  gen_eval:compile(?MODULE, ?LEXER_MOD, ?PARSER_MOD, File, Opts).
+  reset_generation_state(),
+  case parse_file(File) of
+    {ok, skip} ->
+      gen_eval:compile(?MODULE, ?LEXER_MOD, ?PARSER_MOD, File, Opts);
+    {ok, Ast} ->
+      case validate_supported_fragment(Ast) of
+        ok ->
+          gen_eval:compile(?MODULE, ?LEXER_MOD, ?PARSER_MOD, File, Opts);
+        Error = {error, Reason} ->
+          ?ERROR("Refusing to synthesise '~s': ~p.", [File, Reason]),
+          Error
+      end;
+    {error, _} ->
+      % Lexing and parsing errors are reported through the usual path.
+      gen_eval:compile(?MODULE, ?LEXER_MOD, ?PARSER_MOD, File, Opts)
+  end.
 
 parse_string(String) ->
   gen_eval:parse_string(?LEXER_MOD, ?PARSER_MOD, String).
 
 parse_file(File) ->
   gen_eval:parse_file(?LEXER_MOD, ?PARSER_MOD, File).
+
+%%% ----------------------------------------------------------------------------
+%%% Supported-fragment validation.
+%%%
+%%% The modular generator compiles a necessity whose continuation is a verdict
+%%% or a recursion variable into a wrapper function with no receive; that is
+%%% sound only when a parent conjunction state has already consumed the
+%%% decisive event. Shapes outside the fragment below would therefore yield
+%%% monitors that emit verdicts without evidence (or consume events twice),
+%%% so synthesis refuses them up front instead of generating unsound code.
+%%% ----------------------------------------------------------------------------
+
+-spec validate_supported_fragment(Ast) -> ok | {error, Reason} when
+    Ast :: [spec()],
+    Reason :: {unsupported_property_fragment, term()}.
+validate_supported_fragment([{form, _, {sel, _, _, _}, Phi}]) ->
+    validate_init_root(Phi);
+validate_supported_fragment([_, _ | _]) ->
+    {error, {unsupported_property_fragment, multiple_properties}};
+validate_supported_fragment(Other) ->
+    {error, {unsupported_property_fragment, Other}}.
+
+%% The property must open with an initialisation modality so that the
+%% generated init block owns the first receive.
+validate_init_root({Mod, _, {act, _, {init, _, _, _, _}, _Guard}, Cont})
+    when Mod =:= ?HML_NEC; Mod =:= ?HML_POS ->
+    validate_init_continuation(Cont);
+validate_init_root(Node) ->
+    {error, {unsupported_property_fragment, {initial_modality, node_tag(Node)}}}.
+
+%% After the init modality: a verdict (the init block itself receives the
+%% init event), maximal recursion, a two-branch conjunction, or a chain of
+%% necessities that terminates in one of those receive-owning shapes.
+validate_init_continuation({Verdict, _}) when Verdict =:= ?HML_TRU; Verdict =:= ?HML_FLS ->
+    ok;
+validate_init_continuation(Cont) ->
+    validate_receive_owner(Cont).
+
+validate_receive_owner({?HML_MAX, _, {?HML_VAR, _, _}, Body}) ->
+    validate_receive_owner(Body);
+validate_receive_owner(And = {?HML_AND, _, _, _}) ->
+    validate_conjunction(And);
+validate_receive_owner({?HML_NEC, _, {act, _, _, _}, Cont}) ->
+    case Cont of
+        {Verdict, _} when Verdict =:= ?HML_TRU; Verdict =:= ?HML_FLS ->
+            % Wrapper with no receive: the verdict would fire one event early.
+            {error, {unsupported_property_fragment, necessity_into_verdict}};
+        {?HML_VAR, _, _} ->
+            % Wrapper looping without consuming an event.
+            {error, {unsupported_property_fragment, necessity_into_recursion}};
+        _ ->
+            validate_receive_owner(Cont)
+    end;
+validate_receive_owner(Node) ->
+    {error, {unsupported_property_fragment, node_tag(Node)}}.
+
+%% Conjunction states own the receive for both branches, so each branch must
+%% be a necessity whose continuation is a wrapper-safe verdict or recursion
+%% variable. Deeper branch continuations would consume the same event twice.
+validate_conjunction({?HML_AND, _, Left, Right}) ->
+    case {validate_conjunction_branch(Left), validate_conjunction_branch(Right)} of
+        {ok, ok} -> ok;
+        {{error, _} = Error, _} -> Error;
+        {_, {error, _} = Error} -> Error
+    end.
+
+validate_conjunction_branch({?HML_NEC, _, {act, _, {init, _, _, _, _}, _}, _}) ->
+    {error, {unsupported_property_fragment, initial_conjunction}};
+validate_conjunction_branch({?HML_NEC, _, {act, _, _, _}, Psi}) ->
+    case Psi of
+        {Verdict, _} when Verdict =:= ?HML_TRU; Verdict =:= ?HML_FLS -> ok;
+        {?HML_VAR, _, _} -> ok;
+        _ -> {error, {unsupported_property_fragment, {conjunction_branch, node_tag(Psi)}}}
+    end;
+validate_conjunction_branch(Node) ->
+    {error, {unsupported_property_fragment, {conjunction_branch, node_tag(Node)}}}.
+
+node_tag(Node) when is_tuple(Node), tuple_size(Node) > 0 ->
+    element(1, Node);
+node_tag(Node) ->
+    Node.
+
+%%% ----------------------------------------------------------------------------
+%%% Generation-scoped memoisation of generated-function argument lists.
+%%%
+%%% Previously stored in persistent_term keyed by generated function-name
+%%% atoms: entries were never erased and collided across compilations, so a
+%%% second property compiled in the same VM inherited the first property's
+%%% variable names (audit finding C2). The memo now lives in the process
+%%% dictionary under a dedicated namespace and is erased when compilation
+%%% starts.
+%%% ----------------------------------------------------------------------------
+
+-define(KEY_FUN_ARGS, maxhml_fun_args).
+
+reset_generation_state() ->
+    _ = [erase(Key) || {Key = {?KEY_FUN_ARGS, _}, _} <- get()],
+    ok.
+
+fun_args_put(Name, Args) ->
+    put({?KEY_FUN_ARGS, Name}, Args),
+    ok.
+
+fun_args_get(Name) ->
+    case get({?KEY_FUN_ARGS, Name}) of
+        undefined -> error({missing_function_args, Name});
+        Args -> Args
+    end.
+
+fun_args_get(Name, Default) ->
+    case get({?KEY_FUN_ARGS, Name}) of
+        undefined -> Default;
+        Args -> Args
+    end.
 
 %%% ----------------------------------------------------------------------------
 %%% Functions to generate the modular functions for the monitor, one time
@@ -208,22 +337,22 @@ generate_function(Node = {?HML_MAX, LineNumber, _Var = {?HML_VAR, _, _}, Phi}, _
     FunctionName = generate_function_name(Node),
     ?TRACE("Generating function ~p for 'max' node from src line ~p. ~n ", [FunctionName,LineNumber]),
     FunctionArgs = 
-        case persistent_term:get(FunctionName, empty) of
+        case fun_args_get(FunctionName, empty) of
             empty ->
-                persistent_term:put(FunctionName, generate_function_args(Node, [])),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)]);
+                fun_args_put(FunctionName, generate_function_args(Node, [])),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(FunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(FunctionName)])
         end,
 
  NextFunctionName = generate_function_name(Phi),
     NextFunctionArgs = 
-        case persistent_term:get(NextFunctionName, empty) of
+        case fun_args_get(NextFunctionName, empty) of
             empty ->
-                persistent_term:put(NextFunctionName, generate_function_args(Phi, [])),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)]);
+                fun_args_put(NextFunctionName, generate_function_args(Phi, [])),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(NextFunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(NextFunctionName)])
         end,
 
 % ?DOUBLE CHECK THIS SECTION
@@ -273,33 +402,33 @@ generate_function(
     LeftNodeArgs = lists:flatten([erl_syntax:variable(V) || V <- generate_function_args(InnerLeftNode, BoundVarsLeft)]),
     PsiBoundVarsLeft = extract_bound_vars_from_guard(PsiLeft),
     PsiLeftFunctionArgs = 
-        case persistent_term:get(LeftNodeFunctionName, empty) of
+        case fun_args_get(LeftNodeFunctionName, empty) of
             empty ->
-                persistent_term:put(LeftNodeFunctionName, generate_function_args(PsiLeft, PsiBoundVarsLeft)),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(LeftNodeFunctionName)]);
+                fun_args_put(LeftNodeFunctionName, generate_function_args(PsiLeft, PsiBoundVarsLeft)),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(LeftNodeFunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(LeftNodeFunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(LeftNodeFunctionName)])
         end,
 
     BoundVarsRight = extract_bound_vars_from_guard(OuterNode),
     RightNodeArgs = lists:flatten([erl_syntax:variable(V) || V <- generate_function_args(InnerRightNode, BoundVarsRight)]),
     PsiBoundVarsRight = extract_bound_vars_from_guard(PsiRight),
     PsiRightFunctionArgs = 
-        case persistent_term:get(RightNodeFunctionName, empty) of
+        case fun_args_get(RightNodeFunctionName, empty) of
             empty ->
-                persistent_term:put(RightNodeFunctionName, generate_function_args(PsiRight, PsiBoundVarsRight)),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(RightNodeFunctionName)]);
+                fun_args_put(RightNodeFunctionName, generate_function_args(PsiRight, PsiBoundVarsRight)),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(RightNodeFunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(RightNodeFunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(RightNodeFunctionName)])
         end,
 
     CompositeFunctionArgs = 
-        case persistent_term:get(CompositeFunctionName, empty) of
+        case fun_args_get(CompositeFunctionName, empty) of
             empty ->
-                persistent_term:put(CompositeFunctionName, lists:flatten([LeftNodeArgs, RightNodeArgs])),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(CompositeFunctionName)]);
+                fun_args_put(CompositeFunctionName, lists:flatten([LeftNodeArgs, RightNodeArgs])),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(CompositeFunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(CompositeFunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(CompositeFunctionName)])
         end,
    
  
@@ -434,23 +563,23 @@ generate_function(Node = {?HML_NEC, LineNumber, {act, _, Pat, Guard}, Phi}, _Opt
     FunctionName = generate_function_name(Node),
     ?TRACE("Generating function ~p for 'nec' node from src line ~p. ~n ", [FunctionName, LineNumber]),
     FunctionArgs = 
-        case persistent_term:get(FunctionName, empty) of
+        case fun_args_get(FunctionName, empty) of
             empty ->
-                persistent_term:put(FunctionName, generate_function_args(Node, BoundVars)),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)]);
+                fun_args_put(FunctionName, generate_function_args(Node, BoundVars)),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(FunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(FunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(FunctionName)])
         end,
 
     NextBoundVars = extract_bound_vars_from_guard(Phi),
     NextFunctionName = generate_function_name(Phi),
     NextFunctionArgs = 
-        case persistent_term:get(NextFunctionName, empty) of
+        case fun_args_get(NextFunctionName, empty) of
             empty ->
-                persistent_term:put(NextFunctionName, generate_function_args(Phi, NextBoundVars)),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)]);
+                fun_args_put(NextFunctionName, generate_function_args(Phi, NextBoundVars)),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(NextFunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(NextFunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(NextFunctionName)])
         end,
 
     % remove extra fluff for function call 
@@ -592,22 +721,22 @@ generate_init_block(_OuterNode =
 
     PsiBoundVarsLeft = extract_bound_vars_from_guard(PsiLeft),
     PsiLeftFunctionArgs = 
-        case persistent_term:get(LeftNodeNextFunctionName, empty) of
+        case fun_args_get(LeftNodeNextFunctionName, empty) of
             empty ->
-                persistent_term:put(LeftNodeNextFunctionName, generate_function_args(PsiLeft, PsiBoundVarsLeft)),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(LeftNodeNextFunctionName)]);
+                fun_args_put(LeftNodeNextFunctionName, generate_function_args(PsiLeft, PsiBoundVarsLeft)),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(LeftNodeNextFunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(LeftNodeNextFunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(LeftNodeNextFunctionName)])
         end,
 
     PsiBoundVarsRight = extract_bound_vars_from_guard(PsiRight),
     PsiRightFunctionArgs = 
-        case persistent_term:get(RightNodeNextFunctionName, empty) of
+        case fun_args_get(RightNodeNextFunctionName, empty) of
             empty ->
-                persistent_term:put(RightNodeNextFunctionName, generate_function_args(PsiRight, PsiBoundVarsRight)),
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(RightNodeNextFunctionName)]);
+                fun_args_put(RightNodeNextFunctionName, generate_function_args(PsiRight, PsiBoundVarsRight)),
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(RightNodeNextFunctionName)]);
             _ ->
-                lists:flatten([erl_syntax:variable(V) || V <- persistent_term:get(RightNodeNextFunctionName)])
+                lists:flatten([erl_syntax:variable(V) || V <- fun_args_get(RightNodeNextFunctionName)])
         end,
  
     LeftNodeClause = erl_syntax:clause(
@@ -642,23 +771,25 @@ generate_init_block(_OuterNode =
 
     lists:flatten([EtsInitExpr,EtsInsertCurrentState,EtsInsertPreviousState,ReceiveExpr]);
 
-generate_init_block({Mod, _, {act, _, Pat = {init, _, _Pid2, _Pid, _MFArgs}, Guard}, Phi}, _Opts) when Mod =:= ?HML_NEC; Mod =:= ?HML_POS->
+generate_init_block({Mod, _, {act, _, Pat = {init, _, _Pid2, _Pid, _MFArgs}, Guard}, Phi}, Opts) when Mod =:= ?HML_NEC; Mod =:= ?HML_POS->
     ?TRACE("Generating init block for ~p node. ~n", [Mod]),
 
     NextFunctionName = generate_function_name(Phi),
     NextFunctionArgs = generate_function_args(Phi, []),
-    
-    StateUpdateCalls = generate_state_update_calls(Pat),
 
-    persistent_term:put(NextFunctionName, NextFunctionArgs),
-    AnonFunEntry = 
-        case Mod of 
+    % The init trace event carries spawn arguments, not a model event, so the
+    % init clause must not call update_current_state/1: feeding a spawn
+    % argument to reachable_state/2 stored the empty list as the current
+    % state and poisoned every later recovery (audit finding H2).
+    fun_args_put(NextFunctionName, NextFunctionArgs),
+    AnonFunEntry =
+        case Mod of
             ?HML_NEC ->
-                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, StateUpdateCalls ++ [
+                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [
                     erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
             ])];
             ?HML_POS ->
-                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], (Guard), StateUpdateCalls ++ [
+                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], (Guard), [
                     erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
                 ]),
                 erl_syntax:clause([gen_eval:pat_tuple(Pat)], invert_operator(Guard), [
@@ -670,19 +801,35 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, _Pid2, _Pid, _MFArgs}, Gua
 
     ReceiveExpr = erl_syntax:receive_expr(AnonFunEntry),
     ?TRACE("Generated init block for ~p node. ~n",[Mod]),
-    
-    % State Management
-
-    % TODO: this needs a refactor...check above
 
     EtsInitExpr = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(new), [erl_syntax:atom(sus_state), erl_syntax:list([erl_syntax:atom(named_table),erl_syntax:atom(public),erl_syntax:atom(set)])]),
-    EtsInsertCurrentState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(current_state),erl_syntax:atom(s0)])]),
+    EtsInsertCurrentState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(current_state),erl_syntax:atom(initial_state_from_opts(Opts))])]),
     EtsInsertPreviousState = erl_syntax:application(erl_syntax:atom(ets),erl_syntax:atom(insert), [erl_syntax:atom(sus_state), erl_syntax:tuple([erl_syntax:atom(previous_state),erl_syntax:atom(undefined)])]),
 
     lists:flatten([EtsInitExpr,EtsInsertCurrentState,EtsInsertPreviousState,ReceiveExpr]);
 generate_init_block(N, _) ->
     ?ERROR("Invalid node for init block generation :~p.",[N]),
     [].
+
+%%% @private Resolves the generated monitor's initial SUS state from the
+%%% supplied system-information model. The parsed START row, when present,
+%%% names the state the model occupies before the first observed event;
+%%% models without one fall back to the historical default `s0'.
+initial_state_from_opts(Opts) ->
+    try sys_info_parser:parse_file(opts:monitor_table_opt(Opts)) of
+        Transitions when is_list(Transitions) ->
+            case lists:keyfind('START', 1, Transitions) of
+                {'START', _Event, StartState} when is_atom(StartState) ->
+                    StartState;
+                false ->
+                    s0
+            end
+    catch
+        % A missing or malformed model file fails loudly later, when
+        % generate_sys_info_function/1 parses it for the transition list.
+        _:_ ->
+            s0
+    end.
 
 -spec generate_verdicts() -> [erl_syntax:syntaxTree()].
 generate_verdicts() ->
@@ -859,7 +1006,7 @@ generate_function_name({Verdict, _}) when Verdict =:= ?HML_TRU; Verdict =:= ?HML
 generate_function_args(Node = {?HML_VAR, _LineNumber, Name}, _BoundVars) ->
     % Recursive variable encountered; no further recursion
     ?TRACE("Searching for function arguments for 'var' node ~p.~n", [Name]),
-    persistent_term:get(generate_function_name(Node), []);
+    fun_args_get(generate_function_name(Node), []);
     % _BoundVars;
     
 generate_function_args(_Node = {?HML_MAX, _, {?HML_VAR, _, _Name}, Phi}, BoundVars) ->
@@ -1062,9 +1209,6 @@ get_pat({Mod, _, {?HML_ACT, _, Pat, _Guard}, _})
 %%% @private Initializes the variable placeholder generator.
 -spec init_ph() -> ok.
 init_ph() ->
-
-  % Placeholder token list must at least contain one name.
-  if length(?PH_NAMES) < 1 -> error("Empty token token names"); true -> ok end,
 
   put(?KEY_PH_NAMES, ?PH_NAMES), % list of available variable placeholder names.
   put(?KEY_PH_CNT, 0), % 0-based index.
