@@ -48,12 +48,12 @@
 
 ### Synthesis Soundness Gate (Phase 5.2, from 2026-07-06 audit)
 
-- [ ] **SND-01**: Unsupported property shapes are rejected at synthesis time with a structured error instead of generating unsound monitors (audit C1/M5).
-- [ ] **SND-02**: Generation state is compilation-scoped; sequential compilations in one VM cannot corrupt each other (audit C2).
-- [ ] **SND-03**: The generated init block cannot poison the SUS state table; the initial state comes from the START row or the documented fallback (audit H2).
-- [ ] **SND-04**: Removed `erlang:get_stacktrace/0` calls are replaced with modern stacktrace handling (audit H1; supersedes RUN-03 for these sites).
-- [ ] **SND-05**: Monitoring-consequence signatures are compared with `=:=` semantics (audit M3).
-- [ ] **SND-06**: Production compilation surfaces warnings and the AGM/synthesis modules compile clean (audit M6).
+- [x] **SND-01**: Unsupported property shapes are rejected at synthesis time with a structured error instead of generating unsound monitors (audit C1/M5).
+- [x] **SND-02**: Generation state is compilation-scoped; sequential compilations in one VM cannot corrupt each other (audit C2).
+- [x] **SND-03**: The generated init block cannot poison the SUS state table; the initial state comes from the START row or the documented fallback (audit H2).
+- [x] **SND-04**: Removed `erlang:get_stacktrace/0` calls are replaced with modern stacktrace handling (audit H1; supersedes RUN-03 for these sites).
+- [x] **SND-05**: Monitoring-consequence signatures are compared with `=:=` semantics (audit M3).
+- [x] **SND-06**: Production compilation surfaces warnings and the AGM/synthesis modules compile clean (audit M6).
 
 ## v0.2 Requirements
 
@@ -125,7 +125,7 @@
 | VERD-01 | Phase 5 | Complete (manual review 2026-07-06) |
 | VERD-02 | Phase 5 | Complete (manual review 2026-07-06) |
 | VERD-03 | Phase 5 | Complete (manual review 2026-07-06) |
-| SND-01..SND-06 | Phase 5.2 | In progress |
+| SND-01..SND-06 | Phase 5.2 | Complete (2026-07-06) |
 | SPEC-01..SPEC-04 | Phases 6-9 | Planned |
 | RUN-01..RUN-04 | Phases 10-13 | Planned |
 | DOC-01..DOC-04 | Phases 14-17 | Planned |

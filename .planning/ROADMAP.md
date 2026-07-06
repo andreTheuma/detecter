@@ -134,8 +134,8 @@ Cross-cutting constraints:
 **Plans:** 2
 
 Plans:
-- [ ] 5.2-01: Fragment validation and compilation-scoped generation state, with regression tests.
-- [ ] 5.2-02: Init-state derivation, stacktrace/dedup/warning fixes, streamer relocation, thesis reconciliation.
+- [x] 5.2-01: Fragment validation and compilation-scoped generation state, with regression tests.
+- [x] 5.2-02: Init-state derivation, stacktrace/dedup/warning fixes, streamer relocation, thesis reconciliation.
 
 ### v0.2 System Information Robustness
 
@@ -385,7 +385,7 @@ Plans:
 | 4. Sound AGM State Regeneration | v0.1 | 3/3 | Complete | 2026-06-29 |
 | 4.1 AGM Engine Extraction and Thesis Reconciliation | v0.1 | 3/3 | Complete | 2026-07-01 |
 | 5. Irrevocability and Verdict Semantics | v0.1 | 3/3 | Complete | 2026-07-06 |
-| 5.2 Synthesis Soundness Gate | v0.1 | 0/2 | In progress | - |
+| 5.2 Synthesis Soundness Gate | v0.1 | 2/2 | Complete | 2026-07-06 |
 | 6. Specification Grammar Definition | v0.2 | 0/2 | Planned | - |
 | 7. Parser Error Model | v0.2 | 0/3 | Planned | - |
 | 8. Condition Language Completion | v0.2 | 0/2 | Planned | - |

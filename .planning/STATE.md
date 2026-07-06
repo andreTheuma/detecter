@@ -1,12 +1,12 @@
 ---
 gsd_state_version: '1.0'
-status: awaiting_manual_review
+status: milestone_v0.1_complete
 progress:
-  total_phases: 23
-  completed_phases: 5
-  total_plans: 51
-  completed_plans: 16
-  percent: 31
+  total_phases: 24
+  completed_phases: 7
+  total_plans: 53
+  completed_plans: 18
+  percent: 34
 ---
 
 # Project State
@@ -16,16 +16,16 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-07-01)
 
 **Core value:** Generated monitors must only emit verdicts that are sound and irrevocable for the traced system model, especially when traces contain missing events.
-**Current focus:** Phase 5: Irrevocability and Verdict Semantics
+**Current focus:** Milestone v0.1 complete (through Phase 5.2); Phase 6+ awaits explicit user go-ahead.
 
 ## Current Position
 
-Phase: 5 of 23 (Irrevocability and Verdict Semantics)
-Plan: 3 of 3
-Status: All three Phase 5 plans executed; awaiting manual review of unstaged, uncommitted changes
-Last activity: 2026-07-02 - Passed 72 code checks, production checkpoint exclusion, the nine-source thesis audit, and a 134-page thesis build.
+Phase: 5.2 of 23+ (Synthesis Soundness Gate) — complete
+Plan: 2 of 2
+Status: v0.1 committed. Manual review completed via full audit (`.planning/AUDIT-v0.1-manual-review.md`); Phase 5 committed as reviewed; Phase 5.2 closed the audit's two critical findings plus bundled mechanical fixes.
+Last activity: 2026-07-06 - 79 default checks green, zero production compile warnings, audit criticals C1/C2 fixed with regression tests, thesis reconciled and rebuilt (135 pages, no errors).
 
-Progress: [###-------] 31%
+Progress: [###-------] 34%
 
 ## Performance Metrics
 
@@ -105,15 +105,19 @@ Decisions are logged in `.planning/PROJECT.md` Key Decisions table.
 
 ### Pending Todos
 
-- Manually review the complete unstaged Phase 5 code, test, thesis, and planning changes before committing.
 - Do not start Phase 6 or later until the user explicitly opens the next milestone.
+- Research paper preparation is tracked in `../Master-Thesis/Documentation/Thesis/paper/PAPER-PLAN.md`.
 
 ### Blockers/Concerns
 
 - GSD helper runtime previously failed to load `../../../package.json`; planning docs are currently maintained directly.
-- `detecter/test/regeneration/automated_event_streamer.erl` is untracked and needs an ownership decision before cleanup.
 - The full thesis build succeeds; existing layout, font, and acronym-reference warnings remain.
-- Phase 5 is technically verified but intentionally uncommitted pending manual review.
+- Audit findings H3 (write_monitors contract), H4 (missing dual acceptance branch), M2 (model determinism validation), and M4 (parser representation) remain scheduled for v0.2 per `.planning/AUDIT-v0.1-manual-review.md` §11.
+
+### Resolved 2026-07-06
+
+- Phase 5 manual review completed (full audit); Phase 5 committed.
+- `automated_event_streamer.erl` moved to `detecter/test/manual/` with a usage header (audit L5).
 
 ## Deferred Items
 
