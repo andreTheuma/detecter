@@ -104,9 +104,6 @@
 -type pd_id() :: list(integer()).
 %% Proof derivation ID.
 
--type tau() :: tau.
-%% Monitor internal silent transition.
-
 -type event() :: any().
 %% Analysable trace event actions.
 
@@ -126,7 +123,6 @@
 -type pat() :: {?KEY_PAT, term()}.
 -type ctx() :: {?KEY_CTX, list()}.
 -type ns() :: {?KEY_NS, atom()}.
--type binding() :: {{atom(), atom()}, any()}.
 
 
 %%% ----------------------------------------------------------------------------
@@ -521,7 +517,7 @@ derive_act(Event, M = {V, _}, PdId) when V =:= yes; V =:= no ->
   % Axiom mVrd.
   {{PdId, ?M_VRD, Event, M, M}, M};
 
-derive_act(Event, L = {act, Env, C, M}, PdId) ->
+derive_act(Event, L = {act, Env, _C, M}, PdId) ->
   ?assertNot(Event =:= tau),
 %%  ?assert(C(Event)),
   ?assert(is_function(M, 1)),
@@ -774,7 +770,7 @@ inc_pdid([Idx | Idxs]) ->
 %%%          index is period-separated.
 -spec pdid_to_iolist(Id :: list(integer())) -> iolist().
 pdid_to_iolist(Id = [_ | _]) ->
-  tl(lists:foldl(fun(Idx, Id) -> [$., integer_to_list(Idx) | Id] end, [], Id)).
+  tl(lists:foldl(fun(Idx, Acc) -> [$., integer_to_list(Idx) | Acc] end, [], Id)).
 
 %% @private Returns a human-parsable monitor representation of the specified
 %%          monitor.
@@ -897,7 +893,7 @@ do_monitor(Event, VerdictFun) when is_function(VerdictFun, 2) ->
     undefined ->
       ?TRACE("Analyzer undefined; discarding trace event ~w.", [Event]),
       undefined;
-    {PdList, M} ->
+    {_PdList, M} ->
 
       % Check whether the trace event should be recorded. We do this via the
       % environmental variable DEBUG.
@@ -922,7 +918,8 @@ do_monitor(Event, VerdictFun) when is_function(VerdictFun, 2) ->
       % Check whether verdict is reached to enable immediate detection, should
       % this be the case.
 %%      put(?MONITOR, {PdList_, M_} = analyze(Event, M, PdList)),
-      put(?MONITOR, {_, M_} = analyze(Event, M, [])), % TODO: Use to discard the PdList and make monitor more space efficient.
+      {_, M_} = Analysis = analyze(Event, M, []), % TODO: Use to discard the PdList and make monitor more space efficient.
+      put(?MONITOR, Analysis),
       case is_verdict(M_) of
         true ->
           {Verdict, _} = M_,
@@ -933,11 +930,6 @@ do_monitor(Event, VerdictFun) when is_function(VerdictFun, 2) ->
       end,
       M_
   end.
-
-%% @doc Default filter that allows all events to pass.
--spec filter(Event :: event:int_event()) -> true.
-filter(_) ->
-  true. % True = keep event.
 
 %% @private Determines whether the specified monitor is indeed a verdict.
 -spec is_verdict(V :: {?VERDICT_YES | ?VERDICT_NO, env()}) -> boolean().

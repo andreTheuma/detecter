@@ -40,7 +40,7 @@ parse_event(EventText) ->
     case parse_event_and_guard(EventTrimmed) of
         {ok, Parsed} -> 
                 Parsed;
-            {error,Reason} ->
+            {error,_Reason} ->
                   try list_to_integer(binary_to_list(EventTrimmed)) of
                     Int -> 
                             {is_integer, Int}

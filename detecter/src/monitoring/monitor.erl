@@ -161,11 +161,15 @@ start_offline(File, PidS, MfaSpec, Opts) when is_function(MfaSpec, 1) ->
 %%  util:syn_ack(Root),
 %%  Root.
 
-online_attach(Pid, MfaSpec, Opts) when is_function(MfaSpec, 1) ->
+% Dynamic attach/detach stubs: kept pending the Phase 18 implement-or-remove
+% decision (see .planning/ROADMAP.md), so the unused warnings are silenced
+% deliberately rather than deleting the intended API surface.
+-compile({nowarn_unused_function, [{online_attach, 3}, {online_detach, 1}]}).
+online_attach(_Pid, MfaSpec, _Opts) when is_function(MfaSpec, 1) ->
   % TODO: (Future). Attach to process once the system has been started.
   ok.
 
-online_detach(Pid) ->
+online_detach(_Pid) ->
   % TODO: (Future). Stop analysing process.
   ok.
 

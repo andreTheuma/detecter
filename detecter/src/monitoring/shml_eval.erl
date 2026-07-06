@@ -23,7 +23,7 @@
 -module(shml_eval).
 -author("Duncan Paul Attard").
 
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 
 %%% Includes.
 -include_lib("stdlib/include/assert.hrl").

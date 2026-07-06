@@ -54,7 +54,8 @@ start(File) when is_list(File) ->
   IoDev = open_writer(File),
 
   % Launch main loop and register writer process.
-  register(?MODULE, Pid = spawn(?MODULE, loop, [IoDev, 0])),
+  Pid = spawn(?MODULE, loop, [IoDev, 0]),
+  register(?MODULE, Pid),
   Pid.
 
 

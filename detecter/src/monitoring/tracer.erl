@@ -795,7 +795,7 @@ instr(Mode, State, {trace, _, spawn, PidTgt, Mfa = {_, _, _}}, PidT, Parent)
   Parent :: parent().
 route_detach(State, Cmd = {detach, PidT, PidTgt}, Analyzer, Parent) ->
   do_handle(PidTgt, State,
-    fun _Route(PidT) ->
+    fun _Route(PidNext) ->
 
       % Route 'detach' command to next hop. Commands to be routed are sent by
       % one specific descendant tracer to signal a system process detach. This
@@ -806,7 +806,7 @@ route_detach(State, Cmd = {detach, PidT, PidTgt}, Analyzer, Parent) ->
       % to it for that particular system process. The process-tracer mapping is
       % removed from the routing map. All tracers in subsequent hops handle the
       % routed 'detach' command analogously.
-      route(PidT, Cmd),
+      route(PidNext, Cmd),
       State0 = State#state{routes = del_route(PidTgt, State#state.routes)},
 
       % Check whether tracer can be terminated.

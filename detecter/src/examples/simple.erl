@@ -49,7 +49,8 @@
 %%% ----------------------------------------------------------------------------
 
 start() ->
-  register(?MODULE, Pid = spawn(?MODULE, init, [])),
+  Pid = spawn(?MODULE, init, []),
+  register(?MODULE, Pid),
   Pid.
 
 stop() ->
