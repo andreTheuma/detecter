@@ -6,11 +6,13 @@ This roadmap tracks the remediation work needed to bring the detectEr codebase i
 
 ## Milestones
 
-- **v0.1 Thesis Claim Stabilization** - Phases 1-5, including inserted Phase 4.1. Current active remediation target; Phases 1-4.1 complete.
-- **v0.2 System Information Robustness** - Phases 6-9. Planned follow-up.
-- **v0.3 Runtime Hardening** - Phases 10-13. Planned follow-up.
-- **v0.4 Research Evidence and Thesis Traceability** - Phases 14-17. Planned follow-up.
-- **v0.5 Deferred Cleanup** - Phases 18-22. Backlog.
+- **v0.1 Thesis Claim Stabilization** - Phases 1-5, including inserted Phase 4.1. Current and final thesis-critical implementation milestone; stop for review after Phase 5.
+- **v0.2 System Information Robustness** - Phases 6-9. Future milestone.
+- **v0.3 Runtime Hardening** - Phases 10-13. Future milestone.
+- **v0.4 Research Evidence and Thesis Traceability** - Phases 14-17. Future milestone.
+- **v0.5 Deferred Cleanup** - Phases 18-22. Future milestone/backlog.
+
+Phases 6 through 22 are preserved for future work and must not be entered automatically after completing `v0.1`.
 
 ## Phases
 
@@ -100,12 +102,40 @@ Plans:
   1. A recovered trace produces the same verdict as its corresponding complete trace when recovery is deterministic.
   2. Ambiguous missing traces do not produce eager rejection or acceptance verdicts.
   3. Once a verdict is emitted, later trace extension or recovered missing-event detail cannot retract it.
-**Plans:** TBD
+**Plans:** 3
 
 Plans:
-- [ ] 05-01: Add complete-trace versus recovered-trace equivalence tests.
-- [ ] 05-02: Add no-eager-verdict tests for ambiguous traces.
-- [ ] 05-03: Add irrevocability regression tests.
+
+**Wave 1**
+- [x] 05-01: Preserve and directly replay the lookahead after one atomic post-agreement recovery commit.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 05-02: Prove complete/recovered observable equivalence and conservative withholding with deterministic tests.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 05-03: Prove terminal irrevocability, reconcile every active thesis chapter, and close v0.1.
+
+Cross-cutting constraints:
+- Preserve the exact lookahead envelope and ordinary selective-receive behavior across replay and recursive bridge states.
+- Ambiguous or unproven recovery emits no verdict and commits no recovery state.
+- Claim-critical tests use causal synchronization rather than sleeps or process-state polling.
+- Phase 5 ends the thesis-critical milestone; no Phase 6+ execution follows automatically.
+
+#### Phase 5.2: Synthesis Soundness Gate
+**Goal:** Close the two critical audit findings that let synthesis emit unsound or corrupt monitors, plus the mechanical fixes the audit bundled with them (`.planning/AUDIT-v0.1-manual-review.md` C1, C2, H1, H2, M3, M6, L5).
+**Depends on:** Phase 5 (committed).
+**Success Criteria** (what must be TRUE):
+  1. Property shapes outside the supported fragment are rejected at synthesis with a structured error; no monitor file is emitted (audit C1; also rejects multi-property files, audit M5).
+  2. Compiling multiple properties in one VM produces independent, compilable monitors; generation state is compilation-scoped, not `persistent_term` (audit C2).
+  3. The generated init block derives the initial state from the model's START row (fallback `s0`) and no longer feeds spawn arguments into `update_current_state/1` (audit H2), proven by an end-to-end `flu_spec/0` test.
+  4. No `erlang:get_stacktrace/0` call sites remain (audit H1).
+  5. Consequence-signature deduplication uses `=:=` semantics (audit M3).
+  6. `make compile` shows warnings (`-W0` removed) and compiles the synthesis/regeneration modules warning-free (audit M6).
+**Plans:** 2
+
+Plans:
+- [ ] 5.2-01: Fragment validation and compilation-scoped generation state, with regression tests.
+- [ ] 5.2-02: Init-state derivation, stacktrace/dedup/warning fixes, streamer relocation, thesis reconciliation.
 
 ### v0.2 System Information Robustness
 
@@ -352,8 +382,10 @@ Plans:
 | 1. Test Harness Baseline | v0.1 | 3/3 | Complete | 2026-06-24 |
 | 2. Parser Contract Alignment | v0.1 | 2/2 | Complete | 2026-06-24 |
 | 3. Generated Monitor Compile Correctness | v0.1 | 2/2 | Complete | 2026-06-26 |
-| 4. Sound AGM State Regeneration | v0.1 | 1/3 | In progress | - |
-| 5. Irrevocability and Verdict Semantics | v0.1 | 0/3 | Not started | - |
+| 4. Sound AGM State Regeneration | v0.1 | 3/3 | Complete | 2026-06-29 |
+| 4.1 AGM Engine Extraction and Thesis Reconciliation | v0.1 | 3/3 | Complete | 2026-07-01 |
+| 5. Irrevocability and Verdict Semantics | v0.1 | 3/3 | Complete | 2026-07-06 |
+| 5.2 Synthesis Soundness Gate | v0.1 | 0/2 | In progress | - |
 | 6. Specification Grammar Definition | v0.2 | 0/2 | Planned | - |
 | 7. Parser Error Model | v0.2 | 0/3 | Planned | - |
 | 8. Condition Language Completion | v0.2 | 0/2 | Planned | - |

@@ -1,12 +1,12 @@
 ---
 gsd_state_version: '1.0'
-status: in_progress
+status: awaiting_manual_review
 progress:
   total_phases: 23
   completed_phases: 5
   total_plans: 51
-  completed_plans: 13
-  percent: 25
+  completed_plans: 16
+  percent: 31
 ---
 
 # Project State
@@ -21,16 +21,16 @@ See: `.planning/PROJECT.md` (updated 2026-07-01)
 ## Current Position
 
 Phase: 5 of 23 (Irrevocability and Verdict Semantics)
-Plan: Not yet planned
-Status: Ready for planning - Phase 4.1 verified complete
-Last activity: 2026-07-01 - Extracted pure AGM runtime and code generation, passed 54 default EUnit checks, and reconciled all eight supplied thesis chapters.
+Plan: 3 of 3
+Status: All three Phase 5 plans executed; awaiting manual review of unstaged, uncommitted changes
+Last activity: 2026-07-02 - Passed 72 code checks, production checkpoint exclusion, the nine-source thesis audit, and a 134-page thesis build.
 
-Progress: [###-------] 25%
+Progress: [###-------] 31%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 16
 - Average duration: not tracked yet
 - Total execution time: not tracked yet
 
@@ -43,6 +43,7 @@ Progress: [###-------] 25%
 | 3. Generated Monitor Compile Correctness | 2/2 | not tracked | not tracked |
 | 4. Sound AGM State Regeneration | 3/3 | not tracked | not tracked |
 | 4.1 AGM Engine Extraction and Thesis Reconciliation | 3/3 | not tracked | not tracked |
+| 5. Irrevocability and Verdict Semantics | 3/3 | 32 min | 11 min |
 
 ## Accumulated Context
 
@@ -89,6 +90,14 @@ Decisions are logged in `.planning/PROJECT.md` Key Decisions table.
 - Phase 4.1 plan 04.1-02: `maxhml_agm_codegen` owns transition/reduction AST and generated effect boundaries; `maxhml_eval` delegates through four callbacks.
 - Phase 4.1 plan 04.1-02: The eight Phase 4 semantic cases remain; one architecture check proves generated source calls `agm_engine` and omits the old collector.
 - Phase 4.1 plan 04.1-03: Four thesis chapters were amended and four verified unchanged; the complete 129-page thesis build passes.
+- Phase 5 plan 05-01: Recovery preserves the exact lookahead as an explicit pending envelope and commits both recovery-state keys in one ETS insert only after consequence agreement.
+- Phase 5 plan 05-01: Unchanged recursive/max consequence identities route through generated replay bridges to actual receive-state pending dispatchers with complete bound arguments.
+- Phase 5 plan 05-02: Complete and recovered executions derive from one logical event sequence and compare exact terminal verdict lists or reference-tagged continuation checkpoints.
+- Phase 5 plan 05-02: Pending replay retention is proven by advancing on a newer receive event and observing the older send envelope after the state transition.
+- Phase 5 plan 05-02: All four withholding reasons use queued-before-start inputs, normal worker termination, unchanged two-entry recovery state, and an exact empty verdict list.
+- Phase 5 plan 05-03: Eight named terminal rows cross complete/recovered paths, yes/no verdicts, and queued/post-verdict extensions; every row emits one exact verdict and exits normally.
+- Phase 5 plan 05-03: The abstract and all eight active chapter sources have evidence-backed dispositions; four were amended and five verified unchanged.
+- Phase 5 plan 05-03: v0.1 stops after Phase 5 pending manual review; Phases 6 through 22 remain future milestones.
 
 ### Roadmap Evolution
 
@@ -96,14 +105,15 @@ Decisions are logged in `.planning/PROJECT.md` Key Decisions table.
 
 ### Pending Todos
 
-- Review and commit the accumulated Phase 4 Plan 04-03 and Phase 4.1 code, planning, and thesis changes.
-- Plan Phase 5 complete-trace equivalence, no-eager-verdict, and irrevocability tests.
+- Manually review the complete unstaged Phase 5 code, test, thesis, and planning changes before committing.
+- Do not start Phase 6 or later until the user explicitly opens the next milestone.
 
 ### Blockers/Concerns
 
 - GSD helper runtime previously failed to load `../../../package.json`; planning docs are currently maintained directly.
 - `detecter/test/regeneration/automated_event_streamer.erl` is untracked and needs an ownership decision before cleanup.
-- The full thesis build succeeds; it still reports existing duplicate labels `lst:compileandspawn` and `lst:compileandspawn3` plus layout/font warnings.
+- The full thesis build succeeds; existing layout, font, and acronym-reference warnings remain.
+- Phase 5 is technically verified but intentionally uncommitted pending manual review.
 
 ## Deferred Items
 
@@ -116,6 +126,6 @@ Decisions are logged in `.planning/PROJECT.md` Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-07-01
-Stopped at: Phase 4.1 implementation, tests, thesis reconciliation, and verification complete; all changes remain uncommitted for user review.
-Resume file: `.planning/phases/04.1-agm-engine-extraction-and-thesis-reconciliation/04.1-VERIFICATION.md`
+Last session: 2026-07-02
+Stopped at: Completed Plan 05-03 and final v0.1 evidence gate; awaiting manual review with all changes unstaged.
+Resume file: `.planning/phases/05-irrevocability-and-verdict-semantics/05-03-SUMMARY.md`

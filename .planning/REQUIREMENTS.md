@@ -42,9 +42,18 @@
 
 ### Verdict Semantics
 
-- [ ] **VERD-01**: Deterministically recovered traces produce the same verdict as corresponding complete traces.
-- [ ] **VERD-02**: Ambiguous missing traces do not produce eager verdicts.
-- [ ] **VERD-03**: Once emitted, a verdict is not retracted by later trace extension or event recovery.
+- [x] **VERD-01**: Deterministically recovered traces produce the same verdict as corresponding complete traces.
+- [x] **VERD-02**: Ambiguous missing traces do not produce eager verdicts.
+- [x] **VERD-03**: Once emitted, a verdict is not retracted by later trace extension or event recovery.
+
+### Synthesis Soundness Gate (Phase 5.2, from 2026-07-06 audit)
+
+- [ ] **SND-01**: Unsupported property shapes are rejected at synthesis time with a structured error instead of generating unsound monitors (audit C1/M5).
+- [ ] **SND-02**: Generation state is compilation-scoped; sequential compilations in one VM cannot corrupt each other (audit C2).
+- [ ] **SND-03**: The generated init block cannot poison the SUS state table; the initial state comes from the START row or the documented fallback (audit H2).
+- [ ] **SND-04**: Removed `erlang:get_stacktrace/0` calls are replaced with modern stacktrace handling (audit H1; supersedes RUN-03 for these sites).
+- [ ] **SND-05**: Monitoring-consequence signatures are compared with `=:=` semantics (audit M3).
+- [ ] **SND-06**: Production compilation surfaces warnings and the AGM/synthesis modules compile clean (audit M6).
 
 ## v0.2 Requirements
 
@@ -113,9 +122,10 @@
 | AGM-05 | Phase 4 | Complete |
 | ENG-01..ENG-03 | Phase 4.1 | Complete |
 | ACAD-01..ACAD-02 | Phase 4.1 | Complete |
-| VERD-01 | Phase 5 | Pending |
-| VERD-02 | Phase 5 | Pending |
-| VERD-03 | Phase 5 | Pending |
+| VERD-01 | Phase 5 | Complete (manual review 2026-07-06) |
+| VERD-02 | Phase 5 | Complete (manual review 2026-07-06) |
+| VERD-03 | Phase 5 | Complete (manual review 2026-07-06) |
+| SND-01..SND-06 | Phase 5.2 | In progress |
 | SPEC-01..SPEC-04 | Phases 6-9 | Planned |
 | RUN-01..RUN-04 | Phases 10-13 | Planned |
 | DOC-01..DOC-04 | Phases 14-17 | Planned |
@@ -128,4 +138,4 @@
 
 ---
 *Requirements defined: 2026-06-24*
-*Last updated: 2026-07-01 after Phase 4.1 verification.*
+*Last updated: 2026-07-02 after Phase 5 verification; changes pending manual review.*
