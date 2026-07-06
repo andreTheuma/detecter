@@ -73,6 +73,23 @@ conflicting_consequences_withhold_test() ->
         agm_engine:resolve_monitoring_consequence(Recovery, ReductionFun)
     ).
 
+numeric_bound_values_are_compared_exactly_test() ->
+    Recovery = #{
+        source_state => s0,
+        inferred_state => s1,
+        event_specs => [{literal, 0}, {literal, 1}]
+    },
+    ReductionFun = fun
+        ({literal, 0}) ->
+            {ok, [{{continue, state2, [1]}, fun(_Envelope) -> int end}]};
+        ({literal, 1}) ->
+            {ok, [{{continue, state2, [1.0]}, fun(_Envelope) -> float end}]}
+    end,
+    ?assertEqual(
+        {withhold, ambiguous_consequence},
+        agm_engine:resolve_monitoring_consequence(Recovery, ReductionFun)
+    ).
+
 unknown_symbolic_proof_withholds_test() ->
     Recovery = #{
         source_state => s0,

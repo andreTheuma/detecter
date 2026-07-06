@@ -155,7 +155,7 @@ weave(SrcDir, MfaSpec, Opts) when is_function(MfaSpec, 1) ->
       Compiled;
 
     {error, Reason} ->
-      erlang:raise(error, Reason, erlang:get_stacktrace())
+      error(Reason)
   end.
 
 %% @doc Instruments the specified module file by weaving in tracing and monitor
@@ -199,7 +199,7 @@ weave_file(File, MfaSpec, Opts) when is_function(MfaSpec, 1) ->
       Compiled;
 
     {error, Reason} ->
-      erlang:raise(error, Reason, erlang:get_stacktrace())
+      error(Reason)
   end.
 
 
@@ -733,9 +733,12 @@ weave_remote_spawn({call, Line, {remote, _, ModSpawn = {atom, _, erlang}, FunSpa
   % Create variables that are used to bind the individual arguments of the
   % original call made to spawn. Variables are used to store the evaluations
   % of said arguments.
-  ModMatch = abs_match(Line, ModVar = create_var(Line, 'Mod', Id), Mod),
-  FunMatch = abs_match(Line, FunVar = create_var(Line, 'Fun', Id), Fun),
-  ArgsMatch = abs_match(Line, ArgsVar = create_var(Line, 'Args', Id), Args),
+  ModVar = create_var(Line, 'Mod', Id),
+  FunVar = create_var(Line, 'Fun', Id),
+  ArgsVar = create_var(Line, 'Args', Id),
+  ModMatch = abs_match(Line, ModVar, Mod),
+  FunMatch = abs_match(Line, FunVar, Fun),
+  ArgsMatch = abs_match(Line, ArgsVar, Args),
 
   % The new arguments to original spawn call is now replaced with evaluated
   % arguments to spawn call; the values are those bound with above variables.
@@ -828,9 +831,12 @@ weave_remote_proc_lib_spawn({call, Line, {remote, _, ModSpawn = {atom, _, proc_l
   % Create variables that are used to bind the individual arguments of the
   % original call made to spawn. Variables are used to store the evaluations
   % of said arguments.
-  ModMatch = abs_match(Line, ModVar = create_var(Line, 'Mod', Id), Mod),
-  FunMatch = abs_match(Line, FunVar = create_var(Line, 'Fun', Id), Fun),
-  ArgsMatch = abs_match(Line, ArgsVar = create_var(Line, 'Args', Id), Args),
+  ModVar = create_var(Line, 'Mod', Id),
+  FunVar = create_var(Line, 'Fun', Id),
+  ArgsVar = create_var(Line, 'Args', Id),
+  ModMatch = abs_match(Line, ModVar, Mod),
+  FunMatch = abs_match(Line, FunVar, Fun),
+  ArgsMatch = abs_match(Line, ArgsVar, Args),
 
   % The new arguments to original spawn call is now replaced with evaluated
   % arguments to spawn call; the values are those bound with above variables.
@@ -918,18 +924,6 @@ weave_remote_proc_lib_spawn({call, Line, {remote, _, ModSpawn = {atom, _, proc_l
 abs_atom(Line, Atom) ->
   {atom, Line, Atom}.
 
-abs_char(Line, Char) ->
-  {char, Line, Char}.
-
-abs_float(Line, Float) ->
-  {float, Line, Float}.
-
-abs_integer(Line, Integer) ->
-  {integer, Line, Integer}.
-
-abs_string(Line, String) ->
-  {string, Line, String}.
-
 abs_remote_call(Line, Mod, Fun, Args) ->
   {call, Line, {remote, Line, Mod, Fun}, Args}.
 
@@ -944,12 +938,6 @@ abs_fun_clauses(Clauses) ->
 
 abs_fun_clause(Line, Patterns, Guards, Body) ->
   {clause, Line, Patterns, Guards, Body}.
-
-abs_list(Line, []) ->
-  {nil, Line};
-abs_list(_, [Expr | Exprs]) ->
-  Line = element(2, Expr), % Second element of expression is ALWAYS line number.
-  {cons, Line, Expr, abs_list(Line, Exprs)}.
 
 abs_tuple(Line, Exprs) ->
   {tuple, Line, Exprs}.

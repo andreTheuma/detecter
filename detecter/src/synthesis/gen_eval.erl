@@ -174,12 +174,6 @@
 | af_integer()
 | af_string().
 
--type af_singleton_integer_type() :: af_integer()
-| af_character()
-| af_unary_op(af_singleton_integer_type())
-| af_binary_op(af_singleton_integer_type()).
-
-
 -type af_atom() :: af_lit_atom(atom()).
 
 -type af_lit_atom(A) :: {'atom', line(), A}.
@@ -328,7 +322,7 @@ compile(Mod, LexerMod, ParserMod, File, Opts) when is_list(Opts) ->
         {error, Reason} ->
 
           % Error when creating directory.
-          erlang:raise(error, Reason, erlang:get_stacktrace())
+          error(Reason)
       end;
 
     {error, Error} ->
@@ -557,10 +551,10 @@ create_module(Mod, Ast, MonFun, Module, Opts) ->
     Mod :: module(),
     Form :: any(),
     Opts :: opts:options().
-visit_entry_form(_Mod, [], Opts) ->
+visit_entry_form(_Mod, [], _Opts) ->
     [erl_syntax:clause([], none, [erl_syntax:atom(undefined)])];
 visit_entry_form(
-    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, Phi} | Forms], Opts
+    Mod, [_Form = {form, _, {sel, _, _MFArgs = {mfargs, _, _M, _F, _Args}, _Guard}, Phi} | _Forms], Opts
 ) ->
     EntryClause = Mod:generate_init_block(Phi, Opts),
 
@@ -607,9 +601,9 @@ visit_function_forms(
 visit_function_forms(
     Mod, [{form, _, {sel, _, {mfargs, _, _, _, _}, _}, 
      {'and', _,
-            InnerLeftNode =
+            _InnerLeftNode =
                 {NodeTypeLeft, _, {_, _, _, _}, InnerLeftPhi},
-            InnerRightNode =
+            _InnerRightNode =
                 {NodeTypeRight, _, {_, _, _, _},
                     InnerRightPhi}}
     } | _], Opts
@@ -629,16 +623,16 @@ visit_function_forms(
     FunctionsPassLeft ++ FunctionsPassRight;
 
 visit_function_forms(
-    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, OuterGuard}, 
-      {pos, _, {act, _, _, InnerGuard}, ContPhi}
-    } | Forms], Opts
+    Mod, [_Form = {form, _, {sel, _, _MFArgs = {mfargs, _, _M, _F, _Args}, _OuterGuard},
+      {pos, _, {act, _, _, _InnerGuard}, ContPhi}
+    } | _Forms], Opts
 ) ->
     Mod:modularise_hml(ContPhi, Opts);
 
 visit_function_forms(
-    Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, OuterGuard}, 
-      {nec, _, {act, _, _, InnerGuard}, ContPhi}
-    } | Forms], Opts
+    Mod, [_Form = {form, _, {sel, _, _MFArgs = {mfargs, _, _M, _F, _Args}, _OuterGuard},
+      {nec, _, {act, _, _, _InnerGuard}, ContPhi}
+    } | _Forms], Opts
 ) ->
     % MonitorTable = Mod:generate_monitor_table(opts:monitor_table_opt(Opts)),
     % ?DEBUG("Monitor table: ~p.", [MonitorTable]),
@@ -666,7 +660,7 @@ visit_forms(_Mod, [], Opts) ->
     _ ->
       [erl_syntax:clause([erl_syntax:underscore()], none, [erl_syntax:atom(undefined)])]
   end;
-visit_forms(Mod, [Form = {form, _, {sel, _, MFArgs = {mfargs, _, M, F, Args}, Guard}, Phi} | Forms], Opts) ->
+visit_forms(Mod, [_Form = {form, _, {sel, _, MFArgs = {mfargs, _, _M, _F, _Args}, Guard}, Phi} | Forms], Opts) ->
   % ?DEBUG("Form: ~p.", [Form]),
   % ?DEBUG("Guard: ~p.", [Guard]),
   % ?DEBUG("MFArgs: ~p.", [MFArgs]),

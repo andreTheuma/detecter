@@ -284,7 +284,7 @@ compile(File, Opts) when is_list(Opts) ->
         {error, Reason} ->
 
           % Error when creating directory.
-          erlang:raise(error, Reason, erlang:get_stacktrace())
+          error(Reason)
       end;
 
     {error, Error} ->

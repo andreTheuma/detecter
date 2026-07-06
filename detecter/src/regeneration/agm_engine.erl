@@ -204,7 +204,14 @@ merge_monitoring_consequences(
     [Reduction = {Signature, _Continuation} | Rest],
     Acc
 ) ->
-    case lists:keymember(Signature, 1, Acc) of
+    % lists:keymember/3 compares with ==, which would merge signatures whose
+    % bound values differ only in numeric type (1 vs 1.0). Consequence
+    % identity requires exactly equal bound values, so compare with =:=.
+    Merged = lists:any(
+        fun({ExistingSignature, _}) -> ExistingSignature =:= Signature end,
+        Acc
+    ),
+    case Merged of
         true ->
             merge_monitoring_consequences(Rest, Acc);
         false ->
