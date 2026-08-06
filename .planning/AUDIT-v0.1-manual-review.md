@@ -129,6 +129,16 @@ x(BaseTok, OwnTok, From) ->            %% phantom 3-arity merging both specs
 
 **Fix:** mechanical — `catch Class:Reason:Stacktrace -> erlang:raise(Class, Reason, Stacktrace)` / `try ... catch error:Reason:ST -> ...`. **Roadmap adjustment:** Phase 12 currently frames this as "remove compilation warnings"; retitle it "replace removed stacktrace API (error paths currently crash)" and consider pulling it forward — it is a 30-minute fix with real diagnostic value.
 
+> **Revision (2026-07-07, thesis-text audit):** the original H2 fix removed the init-clause
+> `update_current_state` call outright. The thesis's supplied-model convention, however,
+> deliberately treats the payload bound at initialisation as the model's **first event**
+> (the token-system walkthroughs depend on `s0 →(1)→ s1` at init), so the call was
+> reinstated with the START-row derivation kept. The remaining exposure — an init payload
+> outside the model's alphabet stores `[]` — fails conservatively (later recovery
+> withholds) and is documented as a runtime-hardening limitation. The π₅-restricted
+> walkthrough was replicated end-to-end against the reinstated code (checkpoint at
+> `recv33`, ETS `current=s1, previous=s2`, no verdict) confirming thesis–code agreement.
+
 ### H2 — Generated init block poisons the SUS state table
 
 Two compounding defects in [maxhml_eval.erl:645-682](detecter/src/synthesis/maxhml_eval.erl):

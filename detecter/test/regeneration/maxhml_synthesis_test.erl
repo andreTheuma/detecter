@@ -149,13 +149,15 @@ init_start_state_end_to_end_test() ->
         Module = load_generated_monitor(Dir, Name),
         Source = generated_source(Dir, Name),
 
-        % The init block derives its initial state from the START row and no
-        % longer feeds the spawn argument into update_current_state/1.
+        % The init block derives its initial state from the START row (here
+        % deliberately not the default s0) and, following the supplied-model
+        % convention, advances it with the init payload as the model's first
+        % event.
         ?assertNotEqual(
             nomatch,
-            binary:match(Source, <<"{current_state, s1}">>)
+            binary:match(Source, <<"{current_state, sA}">>)
         ),
-        ?assertEqual(
+        ?assertNotEqual(
             nomatch,
             re:run(
                 Source,
@@ -227,8 +229,11 @@ default_system_info() ->
     ].
 
 start_row_system_info() ->
+    % sA is deliberately not the s0 fallback, and the init payload 9 is the
+    % model's first event (sA -> s1), matching the supplied-model convention.
     [
-        "{START, NULL, s1};\n",
+        "{START, NULL, sA};\n",
+        "{sA, 9, s1};\n",
         "{s1, 0, s2};\n",
         "{s2, 9, s3};\n"
     ].

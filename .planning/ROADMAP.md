@@ -127,7 +127,7 @@ Cross-cutting constraints:
 **Success Criteria** (what must be TRUE):
   1. Property shapes outside the supported fragment are rejected at synthesis with a structured error; no monitor file is emitted (audit C1; also rejects multi-property files, audit M5).
   2. Compiling multiple properties in one VM produces independent, compilable monitors; generation state is compilation-scoped, not `persistent_term` (audit C2).
-  3. The generated init block derives the initial state from the model's START row (fallback `s0`) and no longer feeds spawn arguments into `update_current_state/1` (audit H2), proven by an end-to-end `flu_spec/0` test.
+  3. The generated init block derives the initial state from the model's START row (fallback `s0`); the init payload advances it as the model's first event per the supplied-model convention (audit H2, revised 2026-07-07 during the thesis-text audit), proven by an end-to-end `flu_spec/0` test.
   4. No `erlang:get_stacktrace/0` call sites remain (audit H1).
   5. Consequence-signature deduplication uses `=:=` semantics (audit M3).
   6. `make compile` shows warnings (`-W0` removed) and compiles the synthesis/regeneration modules warning-free (audit M6).

@@ -777,19 +777,23 @@ generate_init_block({Mod, _, {act, _, Pat = {init, _, _Pid2, _Pid, _MFArgs}, Gua
     NextFunctionName = generate_function_name(Phi),
     NextFunctionArgs = generate_function_args(Phi, []),
 
-    % The init trace event carries spawn arguments, not a model event, so the
-    % init clause must not call update_current_state/1: feeding a spawn
-    % argument to reachable_state/2 stored the empty list as the current
-    % state and poisoned every later recovery (audit finding H2).
+    % The supplied-model convention treats the payload bound by the init
+    % pattern as the model's first event (see the token-system walkthroughs),
+    % so the init clause advances the stored state exactly like ordinary
+    % event clauses. When that payload is not a model event from the initial
+    % state, reachable_state/2 yields [] and every later recovery withholds
+    % conservatively; the START row supplies the pre-init state.
+    StateUpdateCalls = generate_state_update_calls(Pat),
+
     fun_args_put(NextFunctionName, NextFunctionArgs),
     AnonFunEntry =
         case Mod of
             ?HML_NEC ->
-                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, [
+                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], Guard, StateUpdateCalls ++ [
                     erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
             ])];
             ?HML_POS ->
-                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], (Guard), [
+                [erl_syntax:clause([gen_eval:pat_tuple(Pat)], (Guard), StateUpdateCalls ++ [
                     erl_syntax:application(erl_syntax:atom(NextFunctionName), lists:flatten([erl_syntax:variable(V) || V <- NextFunctionArgs]))
                 ]),
                 erl_syntax:clause([gen_eval:pat_tuple(Pat)], invert_operator(Guard), [

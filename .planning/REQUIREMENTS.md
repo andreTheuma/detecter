@@ -50,7 +50,7 @@
 
 - [x] **SND-01**: Unsupported property shapes are rejected at synthesis time with a structured error instead of generating unsound monitors (audit C1/M5).
 - [x] **SND-02**: Generation state is compilation-scoped; sequential compilations in one VM cannot corrupt each other (audit C2).
-- [x] **SND-03**: The generated init block cannot poison the SUS state table; the initial state comes from the START row or the documented fallback (audit H2).
+- [x] **SND-03**: The generated init block derives its initial state from the START row (fallback `s0`) and advances it with the init payload per the supplied-model convention; an out-of-alphabet init payload degrades conservatively to withholding (audit H2, revised 2026-07-07).
 - [x] **SND-04**: Removed `erlang:get_stacktrace/0` calls are replaced with modern stacktrace handling (audit H1; supersedes RUN-03 for these sites).
 - [x] **SND-05**: Monitoring-consequence signatures are compared with `=:=` semantics (audit M3).
 - [x] **SND-06**: Production compilation surfaces warnings and the AGM/synthesis modules compile clean (audit M6).
